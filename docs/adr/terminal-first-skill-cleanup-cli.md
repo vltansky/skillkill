@@ -103,8 +103,9 @@ future purge operation for old quarantine runs.
 
 Deferred. `npkill`, `killpy`, and `dwipe` show that a TUI can be valuable for
 interactive cleanup, especially with search, multi-select, and confirmation.
-For first release, a table plus JSON/CSV output is enough to validate the evidence model
-and deletion contract. TUI can be added later without changing the scanner.
+For the first release, a table plus JSON/CSV output is enough to validate the
+evidence model and deletion contract. TUI can be added later without changing
+the scanner.
 
 ### Build A Broad Developer Cleaner
 
@@ -114,13 +115,13 @@ focused on installed agent skills.
 
 ## Follow-Ups
 
-1. Move or rewrite the current scanner into this project.
-2. Split scanner, row-building, output formatting, and deletion into small
-   modules.
-3. Add fixture tests for Codex skill blocks, Claude `attributionSkill`, weak
-   path references, never-used skills, and protected dot-prefixed skills.
-4. Implement the first release command surface from `docs/plan.md`.
-5. Link `$HOME/.local/bin/skill-cleanup` to the project entrypoint.
-6. Update the old installed skill doc to delegate to this CLI.
-7. Revisit `--include`, `--exclude`, quarantine retention, and optional TUI
-   after first release.
+- Move or rewrite the current scanner into this project.
+- Split scanner, row-building, output formatting, and deletion into small
+  modules.
+- Add fixture tests for Codex skill blocks, Claude `attributionSkill`, weak
+  path references, never-used skills, and protected dot-prefixed skills.
+- Implement the first-release command surface from `docs/plan.md`.
+- Link `$HOME/.local/bin/skill-cleanup` to the project entrypoint.
+- Update the old installed skill doc to delegate to this CLI.
+- Revisit `--include`, `--exclude`, quarantine retention, and optional TUI
+  after the first release.
