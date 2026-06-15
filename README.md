@@ -4,8 +4,8 @@
 or never-used skill directories.
 
 The first design goal is boring safety: the default command reports candidates
-only, deletion requires an explicit apply flag, and evidence must come from
-agent transcripts rather than filesystem access time.
+only, cleanup requires an explicit apply flag, and applied cleanup can be
+restored from a manifest.
 
 ## Docs
 
@@ -24,9 +24,11 @@ skill-cleanup --json
 skill-cleanup --csv /tmp/skill-cleanup.csv
 skill-cleanup --snapshot ~/.codex/skill-cleanup/snapshots.jsonl
 skill-cleanup --apply
+skill-cleanup --undo latest
 ```
 
-Default behavior is dry-run. `--apply` is the destructive mode.
+Default behavior is dry-run. `--apply` moves candidates into a local quarantine
+run and writes an undo manifest. `--undo latest` restores the most recent run.
 
 ## Development
 

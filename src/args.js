@@ -13,8 +13,10 @@ export const DEFAULT_OPTIONS = {
   json: false,
   csv: "",
   snapshot: "",
+  stateDir: "~/.local/state/skill-cleanup",
   commands: false,
   apply: false,
+  undo: "",
 };
 
 export function expandHome(value, home = os.homedir()) {
@@ -55,11 +57,13 @@ Options:
   --json                          Print JSON payload to stdout
   --csv PATH                      Write CSV rows
   --snapshot PATH                 Append a JSONL snapshot
-  --apply                         Remove cleanup candidates after scanning
+  --state-dir PATH                Cleanup state directory (default: ~/.local/state/skill-cleanup)
+  --apply                         Move cleanup candidates to quarantine
+  --undo latest|RUN_ID|PATH       Restore a previous cleanup run
   --full-scan                     Parse every JSONL line instead of using ripgrep prefilter
   -h, --help                      Show help
 
-Default behavior is dry-run. Use --apply only after reviewing candidates.
+Default behavior is dry-run. --apply writes an undo manifest; restore with --undo latest.
 `;
 }
 
@@ -95,10 +99,16 @@ export function parseArgs(argv) {
     } else if (arg === "--snapshot") {
       options.snapshot = readNext(argv, i, arg);
       i += 1;
+    } else if (arg === "--state-dir") {
+      options.stateDir = readNext(argv, i, arg);
+      i += 1;
     } else if (arg === "--commands") {
       options.commands = true;
     } else if (arg === "--apply") {
       options.apply = true;
+    } else if (arg === "--undo") {
+      options.undo = readNext(argv, i, arg);
+      i += 1;
     } else if (arg === "--full-scan") {
       options.fullScan = true;
     } else if (arg === "--json") {
@@ -119,6 +129,9 @@ export function parseArgs(argv) {
   if (options.apply && options.commands) {
     throw new Error("--apply cannot be combined with --commands");
   }
+  if (options.undo && (options.apply || options.commands || options.json || options.csv || options.snapshot)) {
+    throw new Error("--undo cannot be combined with scan/output/apply options");
+  }
 
   return {
     ...options,
@@ -127,6 +140,10 @@ export function parseArgs(argv) {
     claudeDir: path.resolve(expandHome(options.claudeDir)),
     csv: options.csv ? path.resolve(expandHome(options.csv)) : "",
     snapshot: options.snapshot ? path.resolve(expandHome(options.snapshot)) : "",
+    stateDir: path.resolve(expandHome(options.stateDir)),
+    undo:
+      options.undo && (options.undo.includes("/") || options.undo.startsWith("~"))
+        ? path.resolve(expandHome(options.undo))
+        : options.undo,
   };
 }
-

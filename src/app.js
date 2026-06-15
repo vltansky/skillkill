@@ -1,27 +1,11 @@
-import fs from "node:fs";
 import { parseArgs, printHelp } from "./args.js";
 import { buildRows, payloadFor } from "./model.js";
 import { collectSkills, scanEvidence } from "./scan.js";
 import { formatCommands, formatTable, writeCsv, writeSnapshot } from "./output.js";
+import { quarantineCandidates, restoreCleanupRun } from "./quarantine.js";
 
 function write(stream, text) {
   stream.write(text);
-}
-
-function deleteCandidates(rows, stdout) {
-  const candidates = rows.filter((row) => row.cleanup_candidate);
-  if (candidates.length === 0) {
-    write(stdout, "No cleanup candidates.\n");
-    return 0;
-  }
-
-  write(stdout, `Applying cleanup to ${candidates.length} candidates.\n`);
-  for (const row of candidates) {
-    fs.rmSync(row.skill_dir, { recursive: true, force: true });
-    write(stdout, `removed ${row.skill_dir}\n`);
-  }
-  write(stdout, `Deleted ${candidates.length} candidates.\n`);
-  return candidates.length;
 }
 
 export async function main(argv = process.argv.slice(2), io = {}) {
@@ -34,6 +18,18 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     return null;
   }
 
+  if (options.undo) {
+    const result = restoreCleanupRun(options.stateDir, options.undo);
+    write(stdout, `Restored ${result.restored.length} skills from ${result.manifest}.\n`);
+    for (const entry of result.restored) {
+      write(stdout, `restored ${entry.originalPath}\n`);
+    }
+    for (const entry of result.skipped) {
+      write(stdout, `skipped ${entry.skill}: ${entry.reason}\n`);
+    }
+    return result;
+  }
+
   const skills = collectSkills(options.skillsDir);
   const scanStats = await scanEvidence(skills, options);
   const rows = buildRows(skills, { ...options, now });
@@ -43,7 +39,17 @@ export async function main(argv = process.argv.slice(2), io = {}) {
   if (options.snapshot) writeSnapshot(options.snapshot, payload, options);
 
   if (options.apply) {
-    deleteCandidates(rows, stdout);
+    const result = quarantineCandidates(rows, { ...options, now });
+    if (result.count === 0) {
+      write(stdout, "No cleanup candidates.\n");
+    } else {
+      write(stdout, `Applying cleanup to ${result.count} candidates.\n`);
+      write(stdout, `Undo manifest: ${result.manifest}\n`);
+      for (const entry of result.entries) {
+        write(stdout, `moved ${entry.originalPath} -> ${entry.quarantinedPath}\n`);
+      }
+      write(stdout, `Undo with: skill-cleanup --undo ${result.manifest}\n`);
+    }
   } else if (options.commands) {
     write(stdout, formatCommands(rows));
   } else if (options.json) {
@@ -58,4 +64,3 @@ export async function main(argv = process.argv.slice(2), io = {}) {
 
   return payload;
 }
-

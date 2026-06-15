@@ -16,6 +16,7 @@ function makeFixture() {
   const skillsDir = path.join(root, "skills");
   const codexDir = path.join(root, "codex");
   const claudeDir = path.join(root, "claude");
+  const stateDir = path.join(root, "state");
   fs.mkdirSync(path.join(codexDir, "sessions"), { recursive: true });
   fs.mkdirSync(path.join(claudeDir, "projects"), { recursive: true });
 
@@ -57,7 +58,7 @@ function makeFixture() {
     })}\n`,
   );
 
-  return { root, skillsDir, codexDir, claudeDir, skillPath };
+  return { root, skillsDir, codexDir, claudeDir, stateDir, skillPath };
 }
 
 test("builds rows from strong Codex and Claude evidence", async () => {
@@ -117,7 +118,7 @@ test("formats cleanup commands for candidates only", async () => {
   assert.doesNotMatch(commands, /\.system-skill/);
 });
 
-test("apply removes candidates and preserves protected skills", async () => {
+test("apply quarantines candidates and undo restores them", async () => {
   const fixture = makeFixture();
   let stdout = "";
   await main(
@@ -130,6 +131,8 @@ test("apply removes candidates and preserves protected skills", async () => {
       fixture.claudeDir,
       "--unused-installed-days",
       "0",
+      "--state-dir",
+      fixture.stateDir,
       "--apply",
       "--full-scan",
     ],
@@ -141,10 +144,32 @@ test("apply removes candidates and preserves protected skills", async () => {
   );
 
   assert.match(stdout, /Applying cleanup to 3 candidates/);
+  assert.match(stdout, /Undo manifest:/);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), false);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), false);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("weak-only"))), false);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("recent-skill"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath(".system-skill"))), true);
-});
 
+  const latestState = JSON.parse(
+    fs.readFileSync(path.join(fixture.stateDir, "latest.json"), "utf8"),
+  );
+  assert.equal(fs.existsSync(latestState.manifest), true);
+
+  let undoStdout = "";
+  await main(
+    ["--state-dir", fixture.stateDir, "--undo", "latest"],
+    {
+      now: NOW,
+      stdout: { write: (chunk) => (undoStdout += chunk) },
+      stderr: { write: () => {} },
+    },
+  );
+
+  assert.match(undoStdout, /Restored 3 skills/);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), true);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), true);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("weak-only"))), true);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("recent-skill"))), true);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath(".system-skill"))), true);
+});

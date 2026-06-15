@@ -16,7 +16,7 @@ caches, and worktrees:
 - Run a command.
 - Review candidates in the terminal.
 - Optionally export data.
-- Apply deletion only through an explicit flag.
+- Apply cleanup only through an explicit flag.
 
 Prior art points in the same direction:
 
@@ -32,8 +32,8 @@ Prior art points in the same direction:
   two-step deletion, trash mode, risk tiers, and category selection.
 
 The research conclusion is that `skill-cleanup` should be "npkill for installed
-agent skills": narrow artifact class, clear evidence, terminal review, explicit
-apply. It should not start as a broad developer disk cleaner.
+agent skills": narrow artifact class, clear evidence, terminal review,
+reversible apply. It should not start as a broad developer disk cleaner.
 
 ## Decision
 
@@ -49,10 +49,12 @@ The CLI will:
 - Treat `atime` and raw path mentions as weak context only.
 - Print a dry-run candidate table by default.
 - Put cleanup candidates first.
-- Require `--apply` for deletion.
+- Require `--apply` for cleanup.
+- Move applied candidates into a local quarantine run with an undo manifest.
+- Support `--undo latest` to restore the most recent cleanup run.
 - Support `--commands`, `--json`, `--csv`, and `--snapshot`.
 - Stay scoped to whole skill directories, not files inside a skill.
-- Treat optional TUI/trash/risk-tier features as later improvements.
+- Treat optional TUI/risk-tier features as later improvements.
 
 The CLI will not serve Agents UI or generate an interactive browser review.
 The CLI will not clean unrelated developer artifacts such as `node_modules`,
@@ -63,7 +65,7 @@ virtualenvs, build caches, Docker data, or Xcode data.
 Positive:
 
 - The workflow is simpler and easier to run repeatedly.
-- The destructive path is explicit.
+- The cleanup path is explicit and reversible.
 - The output works for both humans and automation.
 - The implementation can stay dependency-light.
 - The product has a clear reference class: `npkill`, but for agent skills.
@@ -92,6 +94,11 @@ normal CLI entrypoint, not inside a skill directory.
 Rejected. Cleanup candidates are recommendations, not proof that deletion is
 safe for every future workflow.
 
+### Permanently Delete On Apply
+
+Rejected. `--apply` should be undoable by default. Permanent deletion can be a
+future purge operation for old quarantine runs.
+
 ### Build A TUI First
 
 Deferred. `npkill`, `killpy`, and `dwipe` show that a TUI can be valuable for
@@ -115,4 +122,5 @@ focused on installed agent skills.
 4. Implement the first release command surface from `docs/plan.md`.
 5. Link `$HOME/.local/bin/skill-cleanup` to the project entrypoint.
 6. Update the old installed skill doc to delegate to this CLI.
-7. Revisit `--trash`, `--include`, `--exclude`, and optional TUI after first release.
+7. Revisit `--include`, `--exclude`, quarantine retention, and optional TUI
+   after first release.

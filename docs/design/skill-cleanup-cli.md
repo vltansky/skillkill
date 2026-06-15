@@ -19,7 +19,7 @@ a skill is still useful.
 - Use strong transcript evidence for usage decisions.
 - Produce copy-pasteable removal commands.
 - Support machine-readable output for reports and automation.
-- Make destructive behavior explicit and easy to audit.
+- Make cleanup explicit, reversible, and easy to audit.
 
 ## Non-Goals
 
@@ -75,6 +75,7 @@ skill-cleanup --json
 skill-cleanup --csv /tmp/skill-cleanup.csv
 skill-cleanup --snapshot ~/.codex/skill-cleanup/snapshots.jsonl
 skill-cleanup --apply
+skill-cleanup --undo latest
 ```
 
 Suggested semantics:
@@ -84,7 +85,9 @@ Suggested semantics:
 - `--json`: print full payload for automation.
 - `--csv`: write tabular rows for spreadsheet review.
 - `--snapshot`: append JSONL scan results for longitudinal tracking.
-- `--apply`: remove candidates and print every removed path.
+- `--apply`: move candidates into a local quarantine run and write an undo
+  manifest.
+- `--undo latest`: restore the most recent quarantine run.
 
 `--delete` may be accepted as a compatibility alias, but docs should prefer
 `--apply`. The word "apply" fits maintenance CLIs where the default is preview
@@ -95,17 +98,19 @@ and a flag applies the proposed changes.
 The destructive path should:
 
 - Require `--apply`.
-- Print the number of candidates before deletion.
-- Print every removed path.
+- Print the number of candidates before cleanup.
+- Move candidates into a quarantine run under the state directory.
+- Write a manifest with original and quarantined paths.
+- Print every moved path and an undo command.
 - Keep dot-prefixed system skills unless a future explicit override exists.
 - Exit non-zero on scan errors that make evidence incomplete.
 
 Possible future hardening:
 
-- `--apply --yes` for non-interactive deletion, with interactive confirmation
+- `--apply --yes` for non-interactive cleanup, with interactive confirmation
   when attached to a TTY.
-- `--trash` to move directories to trash instead of permanent deletion.
 - `--exclude <skill>` and `--include <skill>` for explicit review decisions.
+- `--purge` for deleting old quarantine runs after a retention period.
 
 ## Prior Art
 
@@ -126,11 +131,10 @@ Possible future hardening:
 
 ## Open Questions
 
-- Should deletion require `--apply` only, or `--apply --yes` for non-interactive
+- Should cleanup require `--apply` only, or `--apply --yes` for non-interactive
   safety?
 - Should this be a standalone package, a local script, or part of a broader
   agent-maintenance CLI?
 - Should never-used skills be grouped separately from stale-used skills in the
   default table?
-- Should the CLI support a quarantine/trash mode before permanent deletion?
-
+- What retention policy should old quarantine runs use?

@@ -5,9 +5,9 @@
 Build `skill-cleanup` as a narrow, npkill-style cleanup CLI for one artifact
 class: installed local agent skills.
 
-The command should scan, rank, explain, and optionally remove stale skills. It
-should not become a broad disk cleaner, package manager, marketplace manager, or
-browser/TUI-first review app in first release.
+The command should scan, rank, explain, and optionally quarantine stale skills
+with an undo manifest. It should not become a broad disk cleaner, package
+manager, marketplace manager, or browser/TUI-first review app in first release.
 
 ## Product Shape
 
@@ -35,6 +35,7 @@ skill-cleanup --json
 skill-cleanup --csv /tmp/skill-cleanup.csv
 skill-cleanup --snapshot ~/.codex/skill-cleanup/snapshots.jsonl
 skill-cleanup --apply
+skill-cleanup --undo latest
 ```
 
 Behavior:
@@ -44,7 +45,9 @@ Behavior:
 - Strong evidence from Codex injected skill blocks and Claude
   `attributionSkill`.
 - Weak evidence shown only as context.
-- `--apply` removes candidates and prints every removed path.
+- `--apply` moves candidates into a local quarantine run and prints every moved
+  path.
+- `--undo latest` restores the most recent quarantine run.
 - Dot-prefixed system skills are protected by default.
 
 Outputs:
@@ -80,7 +83,9 @@ Outputs:
 4. Implement deletion safely.
    - `--apply` only.
    - Print candidate count before deletion.
-   - Print removed paths.
+   - Move candidates to a quarantine run.
+   - Write an undo manifest.
+   - Print moved paths and the undo command.
    - Preserve protected skills.
 
 5. Wire local install.
@@ -90,10 +95,10 @@ Outputs:
 ## P1 After V1
 
 - Directory size column for each skill.
-- `--trash` mode before permanent deletion.
 - `--exclude <skill>` and `--include <skill>`.
 - `--min-age`, `--used-before`, or similar filters if the table gets noisy.
 - Config file for thresholds and protected skills.
+- Optional permanent purge of old quarantine runs.
 - Optional interactive TUI if terminal table review becomes painful.
 
 ## Explicit Non-Goals
@@ -103,4 +108,3 @@ Outputs:
 - Deleting files inside a skill directory.
 - Cleaning unrelated caches, worktrees, packages, or project artifacts.
 - Publishing to npm before the local CLI is stable.
-
