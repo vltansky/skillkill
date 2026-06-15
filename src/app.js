@@ -3,6 +3,7 @@ import { buildRows, payloadFor } from "./model.js";
 import { collectSkills, scanEvidence } from "./scan.js";
 import { formatCommands, formatTable, writeCsv, writeSnapshot } from "./output.js";
 import { runInteractive, shouldRunInteractive } from "./interactive.js";
+import { loadOmitPatterns } from "./omit.js";
 import { quarantineCandidates, restoreCleanupRun } from "./quarantine.js";
 
 function write(stream, text) {
@@ -33,8 +34,10 @@ export async function main(argv = process.argv.slice(2), io = {}) {
 
   const skills = collectSkills(options.skillsDir);
   const scanStats = await scanEvidence(skills, options);
-  const rows = buildRows(skills, { ...options, now });
-  const payload = payloadFor(rows, options, scanStats, now);
+  const omitPatterns = loadOmitPatterns(options);
+  const modelOptions = { ...options, now, omitPatterns };
+  const rows = buildRows(skills, modelOptions);
+  const payload = payloadFor(rows, modelOptions, scanStats, now);
 
   if (options.csv) writeCsv(options.csv, rows);
   if (options.snapshot) writeSnapshot(options.snapshot, payload, options);

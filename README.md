@@ -20,6 +20,7 @@ cleanup can be restored from a manifest.
 npx skillkill
 skillkill
 skillkill --path ~/.agents/skills
+skillkill --omit simplify
 skillkill --no-interactive
 skillkill --commands
 skillkill --json
@@ -37,6 +38,25 @@ When output is piped, or when `--no-interactive`, `--commands`, `--json`,
 `--csv`, or `--snapshot` is used, `skillkill` prints static output instead.
 `--apply` moves all candidates into a local quarantine run and writes an undo
 manifest. `--undo latest` restores the most recent run.
+
+## Whitelist / Omit
+
+Use `--omit` to keep a skill out of cleanup candidates:
+
+```bash
+skillkill --omit simplify
+skillkill --omit "ck-*"
+skillkill --whitelist simplify
+```
+
+For persistent omissions, add one skill name or glob per line:
+
+```text
+~/.config/skillkill/omit
+```
+
+Blank lines and `#` comments are ignored. Omit patterns match skill names,
+`SKILL.md` paths, and skill directory paths.
 
 Published alias packages delegate to the same CLI:
 

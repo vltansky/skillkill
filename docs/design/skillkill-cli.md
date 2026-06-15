@@ -20,6 +20,7 @@ a skill is still useful.
 - Produce copy-pasteable removal commands.
 - Support machine-readable output for reports and automation.
 - Make cleanup explicit, reversible, and easy to audit.
+- Allow users to omit known-good skills from cleanup candidates.
 
 ## Non-Goals
 
@@ -68,6 +69,8 @@ A candidate row should include:
 skillkill
 skillkill --source codex
 skillkill --source claude
+skillkill --omit simplify
+skillkill --whitelist "ck-*"
 skillkill --no-interactive
 skillkill --unused-days 60
 skillkill --unused-installed-days 14
@@ -87,6 +90,9 @@ Suggested semantics:
 - `--json`: print full payload for automation.
 - `--csv`: write tabular rows for spreadsheet review.
 - `--snapshot`: append JSONL scan results for longitudinal tracking.
+- `--omit` / `--whitelist`: remove exact or glob-matched skill names and paths
+  from cleanup candidates.
+- `--omit-file`: load persistent omit patterns from a file.
 - `--apply`: move candidates into a local quarantine run and write an undo
   manifest.
 - `--undo latest`: restore the most recent quarantine run.
@@ -106,6 +112,7 @@ The destructive path should:
 - Write a manifest with original and quarantined paths.
 - Print every moved path and an undo command.
 - Keep dot-prefixed system skills unless a future explicit override exists.
+- Keep omitted skills out of interactive selection and non-interactive apply.
 - Exit non-zero on scan errors that make evidence incomplete.
 
 Possible future hardening:

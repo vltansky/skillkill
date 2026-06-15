@@ -1,5 +1,6 @@
 import path from "node:path";
 import { shellQuote } from "./fs-utils.js";
+import { findOmitMatch } from "./omit.js";
 
 export function parseTimestamp(value) {
   if (!value) return null;
@@ -87,7 +88,7 @@ export function buildRows(skills, options) {
         cleanupReason = `never used; installed ${installedAgeDays} days ago`;
       }
 
-      return {
+      const row = {
         skill: usage.skill,
         path: usage.path,
         skill_dir: path.dirname(usage.path),
@@ -108,6 +109,29 @@ export function buildRows(skills, options) {
         cleanup_reason: cleanupReason,
         remove_command: `rm -rf ${shellQuote(path.dirname(usage.path))}`,
       };
+
+      const omitMatch = findOmitMatch(row, options.omitPatterns);
+      if (omitMatch) {
+        return {
+          ...row,
+          omitted: true,
+          omit_pattern: omitMatch.pattern,
+          omit_source: omitMatch.source,
+          original_cleanup_candidate: cleanupCandidate,
+          original_cleanup_reason: cleanupReason,
+          cleanup_candidate: false,
+          cleanup_reason: `omitted by whitelist: ${omitMatch.pattern}`,
+        };
+      }
+
+      return {
+        ...row,
+        omitted: false,
+        omit_pattern: "",
+        omit_source: "",
+        original_cleanup_candidate: cleanupCandidate,
+        original_cleanup_reason: cleanupReason,
+      };
     })
     .sort((a, b) => {
       if (a.cleanup_candidate !== b.cleanup_candidate) {
@@ -124,6 +148,7 @@ export function buildRows(skills, options) {
 
 export function payloadFor(rows, options, scanStats, now = new Date()) {
   const candidates = rows.filter((row) => row.cleanup_candidate);
+  const omitted = rows.filter((row) => row.omitted);
   return {
     title: "Skill Cleanup",
     generatedAt: now.toISOString(),
@@ -133,6 +158,7 @@ export function payloadFor(rows, options, scanStats, now = new Date()) {
     summary: {
       total: rows.length,
       candidates: candidates.length,
+      omitted: omitted.length,
       staleCandidates: candidates.filter((row) =>
         row.cleanup_reason.startsWith("last strong use"),
       ).length,
@@ -150,4 +176,3 @@ export function payloadFor(rows, options, scanStats, now = new Date()) {
     rows,
   };
 }
-

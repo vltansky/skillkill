@@ -51,9 +51,12 @@ The CLI will:
 - Print a static dry-run candidate table when output is piped or
   `--no-interactive` is passed.
 - Put cleanup candidates first.
+- Omit user-whitelisted skills from cleanup candidates.
 - Require `--apply` for cleanup.
 - Move applied candidates into a local quarantine run with an undo manifest.
 - Support `--undo latest` to restore the most recent cleanup run.
+- Support `--omit`, `--whitelist`, `--omit-file`, and a default persistent
+  omit file at `~/.config/skillkill/omit`.
 - Support `--commands`, `--json`, `--csv`, and `--snapshot`.
 - Stay scoped to whole skill directories, not files inside a skill.
 - Treat richer TUI search/filter and risk-tier features as later improvements.
@@ -77,6 +80,7 @@ Negative:
 - Review decisions are simpler than the Agents UI version.
 - Search and filter are not available in the first interactive version.
 - Automation must use table, command, CSV, JSON, or snapshot output.
+- Omit patterns can hide stale skills that might still be useful.
 - The narrow scope means it will not solve broader local disk cleanup problems.
 
 ## Alternatives Considered

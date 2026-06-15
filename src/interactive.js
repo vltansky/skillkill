@@ -47,7 +47,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
 
   const lines = [
     "skillkill interactive cleanup",
-    `${candidates.length} cleanup candidates, ${selected.size} selected${hidden ? `, ${hidden} hidden as protected/recent` : ""}`,
+    `${candidates.length} cleanup candidates, ${selected.size} selected${hidden ? `, ${hidden} hidden as protected/recent/omitted` : ""}`,
     "",
     `   sel ${clip("skill", nameWidth)} ${clip("reason", reasonWidth)} ${clip("last strong use", dateWidth)} ${clip("path", pathWidth)}`,
     `   --- ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(pathWidth)}`,

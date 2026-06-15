@@ -196,13 +196,14 @@ Evidence:
    use, evidence counts, and candidate reason.
 4. Keep deletion explicit. Prefer `--apply`, with `--dry-run` implied by
    default behavior.
-5. Add `--json` and `--csv` early; both `npkill` and `null-e` show this matters
+5. Add omit/whitelist support so known-good stale skills do not keep appearing.
+6. Add `--json` and `--csv` early; both `npkill` and `null-e` show this matters
    for automation and audit.
-6. Consider `--trash` before permanent deletion. `dwipe` and `null-e` both make
+7. Consider `--trash` before permanent deletion. `dwipe` and `null-e` both make
    recoverability a first-class safety affordance.
-7. Consider risk tiers later: normal stale skills, never-used skills, and
+8. Consider risk tiers later: normal stale skills, never-used skills, and
    protected/system skills.
-8. Do not copy `modclean`'s pattern of modifying internals. For skills, delete
+9. Do not copy `modclean`'s pattern of modifying internals. For skills, delete
    or quarantine whole skill directories only.
 
 ## Best Borrowed Shape
@@ -211,6 +212,7 @@ Evidence:
 skillkill
 skillkill --no-interactive
 skillkill --path ~/.agents/skills
+skillkill --omit simplify
 skillkill --commands
 skillkill --json
 skillkill --csv /tmp/skillkill.csv

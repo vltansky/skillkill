@@ -30,6 +30,7 @@ skillkill
 skillkill --path ~/.agents/skills
 skillkill --source codex
 skillkill --source claude
+skillkill --omit simplify
 skillkill --no-interactive
 skillkill --commands
 skillkill --json
@@ -50,6 +51,8 @@ Behavior:
 - `--apply` moves candidates into a local quarantine run and prints every moved
   path.
 - `--undo latest` restores the most recent quarantine run.
+- `--omit` / `--whitelist` keeps matching skills out of cleanup candidates.
+- `~/.config/skillkill/omit` stores persistent omit patterns.
 - Dot-prefixed system skills are protected by default.
 
 Outputs:
@@ -82,6 +85,7 @@ Outputs:
    - `--json`.
    - `--csv`.
    - `--snapshot`.
+   - `--omit` and persistent omit file support.
 
 4. Implement deletion safely.
    - `--apply` only.

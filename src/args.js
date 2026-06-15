@@ -14,6 +14,9 @@ export const DEFAULT_OPTIONS = {
   csv: "",
   snapshot: "",
   stateDir: "~/.local/state/skillkill",
+  omitPatterns: [],
+  omitFile: "~/.config/skillkill/omit",
+  noOmitFile: false,
   commands: false,
   interactive: false,
   noInteractive: false,
@@ -60,6 +63,11 @@ Options:
   --csv PATH                      Write CSV rows
   --snapshot PATH                 Append a JSONL snapshot
   --state-dir PATH                Cleanup state directory (default: ~/.local/state/skillkill)
+  --omit PATTERN                  Omit skill name/path from cleanup candidates
+  --whitelist PATTERN             Alias for --omit
+  --allowlist PATTERN             Alias for --omit
+  --omit-file PATH                Omit file (default: ~/.config/skillkill/omit)
+  --no-omit-file                  Ignore the default omit file
   --interactive                   Force interactive terminal review
   --no-interactive                Print the static table instead of terminal review
   --apply                         Move cleanup candidates to quarantine
@@ -74,7 +82,7 @@ Command aliases: skill-kill, skill-cleanup, skill-prune.
 }
 
 export function parseArgs(argv) {
-  const options = { ...DEFAULT_OPTIONS };
+  const options = { ...DEFAULT_OPTIONS, omitPatterns: [...DEFAULT_OPTIONS.omitPatterns] };
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -108,6 +116,14 @@ export function parseArgs(argv) {
     } else if (arg === "--state-dir") {
       options.stateDir = readNext(argv, i, arg);
       i += 1;
+    } else if (arg === "--omit" || arg === "--whitelist" || arg === "--allowlist") {
+      options.omitPatterns.push(readNext(argv, i, arg));
+      i += 1;
+    } else if (arg === "--omit-file") {
+      options.omitFile = readNext(argv, i, arg);
+      i += 1;
+    } else if (arg === "--no-omit-file") {
+      options.noOmitFile = true;
     } else if (arg === "--commands") {
       options.commands = true;
     } else if (arg === "--interactive") {
@@ -157,6 +173,13 @@ export function parseArgs(argv) {
     csv: options.csv ? path.resolve(expandHome(options.csv)) : "",
     snapshot: options.snapshot ? path.resolve(expandHome(options.snapshot)) : "",
     stateDir: path.resolve(expandHome(options.stateDir)),
+    omitFile: path.resolve(expandHome(options.omitFile)),
+    omitPatterns: options.omitPatterns.flatMap((value) =>
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
     undo:
       options.undo && (options.undo.includes("/") || options.undo.startsWith("~"))
         ? path.resolve(expandHome(options.undo))

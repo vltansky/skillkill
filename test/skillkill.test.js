@@ -7,6 +7,7 @@ import test from "node:test";
 import { main } from "../src/app.js";
 import { renderInteractiveScreen, shouldRunInteractive } from "../src/interactive.js";
 import { buildRows } from "../src/model.js";
+import { loadOmitPatterns } from "../src/omit.js";
 import { collectSkills, scanEvidence } from "../src/scan.js";
 import { formatCommands } from "../src/output.js";
 
@@ -117,6 +118,100 @@ test("formats cleanup commands for candidates only", async () => {
   assert.match(commands, /rm -rf '.*never-used'/);
   assert.doesNotMatch(commands, /recent-skill/);
   assert.doesNotMatch(commands, /\.system-skill/);
+});
+
+test("omits cleanup candidates from cli patterns and omit files", async () => {
+  const fixture = makeFixture();
+  const omitFile = path.join(fixture.root, "omit.txt");
+  fs.writeFileSync(omitFile, ["# keep these", "stale-skill", "weak-*"].join("\n"));
+
+  const skills = collectSkills(fixture.skillsDir);
+  await scanEvidence(skills, {
+    skillsDir: fixture.skillsDir,
+    codexDir: fixture.codexDir,
+    claudeDir: fixture.claudeDir,
+    source: "all",
+    fullScan: true,
+  });
+  const rows = buildRows(skills, {
+    unusedDays: 45,
+    unusedInstalledDays: 0,
+    now: NOW,
+    omitPatterns: loadOmitPatterns({
+      omitFile,
+      noOmitFile: false,
+      omitPatterns: ["never-used"],
+    }),
+  });
+
+  const byName = new Map(rows.map((row) => [row.skill, row]));
+  assert.equal(byName.get("stale-skill").cleanup_candidate, false);
+  assert.equal(byName.get("stale-skill").omitted, true);
+  assert.equal(byName.get("stale-skill").omit_pattern, "stale-skill");
+  assert.equal(byName.get("weak-only").cleanup_candidate, false);
+  assert.equal(byName.get("weak-only").omit_pattern, "weak-*");
+  assert.equal(byName.get("never-used").cleanup_candidate, false);
+  assert.equal(byName.get("never-used").omit_pattern, "never-used");
+});
+
+test("whitelist alias removes skills from json and commands output", async () => {
+  const fixture = makeFixture();
+  let jsonStdout = "";
+  await main(
+    [
+      "--path",
+      fixture.skillsDir,
+      "--codex-dir",
+      fixture.codexDir,
+      "--claude-dir",
+      fixture.claudeDir,
+      "--unused-installed-days",
+      "0",
+      "--whitelist",
+      "stale-skill",
+      "--json",
+      "--full-scan",
+      "--no-omit-file",
+    ],
+    {
+      now: NOW,
+      stdout: { write: (chunk) => (jsonStdout += chunk) },
+      stderr: { write: () => {} },
+    },
+  );
+
+  const payload = JSON.parse(jsonStdout);
+  const stale = payload.rows.find((row) => row.skill === "stale-skill");
+  assert.equal(payload.summary.omitted, 1);
+  assert.equal(stale.cleanup_candidate, false);
+  assert.equal(stale.omitted, true);
+
+  let commandsStdout = "";
+  await main(
+    [
+      "--path",
+      fixture.skillsDir,
+      "--codex-dir",
+      fixture.codexDir,
+      "--claude-dir",
+      fixture.claudeDir,
+      "--unused-installed-days",
+      "0",
+      "--omit",
+      "stale-skill",
+      "--commands",
+      "--full-scan",
+      "--no-omit-file",
+    ],
+    {
+      now: NOW,
+      stdout: { write: (chunk) => (commandsStdout += chunk) },
+      stderr: { write: () => {} },
+    },
+  );
+
+  assert.doesNotMatch(commandsStdout, /stale-skill/);
+  assert.match(commandsStdout, /never-used/);
 });
 
 test("renders interactive cleanup candidates", async () => {
