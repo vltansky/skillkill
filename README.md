@@ -40,5 +40,6 @@ npm run check
 Local command link:
 
 ```bash
-ln -sf $HOME/projects/skill-cleanup/bin/skill-cleanup.js $HOME/.local/bin/skill-cleanup
+mkdir -p "$HOME/.local/bin"
+ln -sf "$PWD/bin/skill-cleanup.js" "$HOME/.local/bin/skill-cleanup"
 ```
