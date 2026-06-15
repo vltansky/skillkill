@@ -1,6 +1,6 @@
 {
   "name": "skillkill",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Audit and clean up stale local agent skills.",
   "type": "module",
   "repository": {
@@ -18,16 +18,16 @@
     "LICENSE"
   ],
   "bin": {
-    "skillkill": "./bin/skillkill.js",
-    "skill-kill": "./bin/skillkill.js",
-    "skill-cleanup": "./bin/skillkill.js",
-    "skill-prune": "./bin/skillkill.js"
+    "skillkill": "bin/skillkill.js",
+    "skill-kill": "bin/skillkill.js",
+    "skill-cleanup": "bin/skillkill.js",
+    "skill-prune": "bin/skillkill.js"
   },
   "scripts": {
     "test": "node --test",
-    "check": "node --check bin/skillkill.js && node --check src/app.js && node --check packages/skill-kill/bin/skill-kill.js && node --check packages/skill-cleanup/bin/skill-cleanup.js && node --check packages/skill-prune/bin/skill-prune.js",
+    "check": "node --check bin/skillkill.js && node --check src/app.js && node --check packages/skill-cleanup/bin/skill-cleanup.js && node --check packages/skill-prune/bin/skill-prune.js",
     "lint": "npm run check",
-    "build": "npm pack --dry-run && npm pack ./packages/skill-kill --dry-run && npm pack ./packages/skill-cleanup --dry-run && npm pack ./packages/skill-prune --dry-run"
+    "build": "npm pack --dry-run && npm pack ./packages/skill-cleanup --dry-run && npm pack ./packages/skill-prune --dry-run"
   },
   "license": "MIT"
 }

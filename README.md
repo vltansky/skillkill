@@ -34,10 +34,13 @@ run and writes an undo manifest. `--undo latest` restores the most recent run.
 Published alias packages delegate to the same CLI:
 
 ```bash
-npx skill-kill
 npx skill-cleanup
 npx skill-prune
 ```
+
+Installing `skillkill` also exposes `skill-kill` as a local/global command
+alias. npm blocks `skill-kill` as a separate package name because it is too
+similar to `skillkill`.
 
 ## Development
 
@@ -57,5 +60,5 @@ ln -sf "$PWD/bin/skillkill.js" "$HOME/.local/bin/skillkill"
 ## Publishing
 
 Publishing is done only by GitHub Actions. The publish workflow supports a
-manual dry run and publishes `skillkill`, `skill-kill`, `skill-cleanup`, and
-`skill-prune` from version tags.
+manual dry run and publishes `skillkill`, `skill-cleanup`, and `skill-prune`
+from version tags.

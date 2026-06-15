@@ -1,6 +1,6 @@
 {
   "name": "skill-prune",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Alias package for skillkill.",
   "type": "module",
   "repository": {
@@ -16,14 +16,14 @@
     "README.md"
   ],
   "bin": {
-    "skill-prune": "./bin/skill-prune.js"
+    "skill-prune": "bin/skill-prune.js"
   },
   "scripts": {
     "check": "node --check bin/skill-prune.js",
     "build": "npm pack --dry-run"
   },
   "dependencies": {
-    "skillkill": "0.1.0"
+    "skillkill": "0.1.1"
   },
   "license": "MIT"
 }
