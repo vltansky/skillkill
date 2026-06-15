@@ -1,4 +1,4 @@
-# skill-cleanup CLI Design
+# skillkill CLI Design
 
 ## Problem
 
@@ -7,7 +7,7 @@ some were used long ago, and some were installed but never selected by an
 agent. Manual cleanup is risky because skill names alone do not tell us whether
 a skill is still useful.
 
-`skill-cleanup` should answer two questions:
+`skillkill` should answer two questions:
 
 1. Which installed skills have strong evidence of recent use?
 2. Which skills are reasonable cleanup candidates?
@@ -65,22 +65,22 @@ A candidate row should include:
 ## Command Surface
 
 ```bash
-skill-cleanup
-skill-cleanup --source codex
-skill-cleanup --source claude
-skill-cleanup --unused-days 60
-skill-cleanup --unused-installed-days 14
-skill-cleanup --commands
-skill-cleanup --json
-skill-cleanup --csv /tmp/skill-cleanup.csv
-skill-cleanup --snapshot ~/.codex/skill-cleanup/snapshots.jsonl
-skill-cleanup --apply
-skill-cleanup --undo latest
+skillkill
+skillkill --source codex
+skillkill --source claude
+skillkill --unused-days 60
+skillkill --unused-installed-days 14
+skillkill --commands
+skillkill --json
+skillkill --csv /tmp/skillkill.csv
+skillkill --snapshot ~/.codex/skillkill/snapshots.jsonl
+skillkill --apply
+skillkill --undo latest
 ```
 
 Suggested semantics:
 
-- `skill-cleanup`: dry-run table, candidates first.
+- `skillkill`: dry-run table, candidates first.
 - `--commands`: print every candidate removal command.
 - `--json`: print full payload for automation.
 - `--csv`: write tabular rows for spreadsheet review.

@@ -13,7 +13,7 @@ export const DEFAULT_OPTIONS = {
   json: false,
   csv: "",
   snapshot: "",
-  stateDir: "~/.local/state/skill-cleanup",
+  stateDir: "~/.local/state/skillkill",
   commands: false,
   apply: false,
   undo: "",
@@ -42,7 +42,7 @@ function readNumber(argv, index, arg) {
 }
 
 export function printHelp() {
-  return `Usage: skill-cleanup [options]
+  return `Usage: skillkill [options]
 
 Options:
   --path PATH                     Skills directory to scan (default: ~/.agents/skills)
@@ -57,13 +57,14 @@ Options:
   --json                          Print JSON payload to stdout
   --csv PATH                      Write CSV rows
   --snapshot PATH                 Append a JSONL snapshot
-  --state-dir PATH                Cleanup state directory (default: ~/.local/state/skill-cleanup)
+  --state-dir PATH                Cleanup state directory (default: ~/.local/state/skillkill)
   --apply                         Move cleanup candidates to quarantine
   --undo latest|RUN_ID|PATH       Restore a previous cleanup run
   --full-scan                     Parse every JSONL line instead of using ripgrep prefilter
   -h, --help                      Show help
 
 Default behavior is dry-run. --apply writes an undo manifest; restore with --undo latest.
+Command aliases: skill-kill, skill-cleanup, skill-prune.
 `;
 }
 

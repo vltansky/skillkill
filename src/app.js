@@ -48,7 +48,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
       for (const entry of result.entries) {
         write(stdout, `moved ${entry.originalPath} -> ${entry.quarantinedPath}\n`);
       }
-      write(stdout, `Undo with: skill-cleanup --undo ${result.manifest}\n`);
+      write(stdout, `Undo with: skillkill --undo ${result.manifest}\n`);
     }
   } else if (options.commands) {
     write(stdout, formatCommands(rows));

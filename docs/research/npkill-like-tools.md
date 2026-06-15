@@ -2,7 +2,7 @@
 
 ## Question
 
-Which existing projects resemble `npx npkill`, and what should `skill-cleanup`
+Which existing projects resemble `npx npkill`, and what should `skillkill`
 borrow from them?
 
 ## Short Answer
@@ -13,17 +13,17 @@ does this for `node_modules`; `killpy` does it for Python environments; `dwipe`
 does it for arbitrary directories; `mac-cleaner-cli` and `null-e` broaden the
 idea into category-based developer/system cleanup.
 
-For `skill-cleanup`, the most relevant model is not a broad system cleaner. It
+For `skillkill`, the most relevant model is not a broad system cleaner. It
 is a narrow npkill-style scanner for one artifact class: installed agent skills.
 
 ## Examples
 
-| Project | Scope | Interaction Model | What Matters For `skill-cleanup` |
+| Project | Scope | Interaction Model | What Matters For `skillkill` |
 | --- | --- | --- | --- |
 | `zaldih/npkill` | Finds old/heavy `node_modules` folders | TUI list, keyboard delete, multi-select, filters, JSON output | Best baseline for a focused developer-artifact cleanup tool |
 | `Tlaloc-Es/killpy` | Finds Python envs, caches, build artifacts | TUI plus headless commands | Strong analogue for one ecosystem's stale environments |
 | `trinhminhtriet/dwipe` | Directory size visualization and cleanup | TUI navigator with two-step delete and trash toggle | Good deletion-safety interaction ideas |
-| `guhcostan/mac-cleaner-cli` | macOS caches, logs, dev files, apps | Interactive category selection | Good risk-tiering model, but broader than `skill-cleanup` needs |
+| `guhcostan/mac-cleaner-cli` | macOS caches, logs, dev files, apps | Interactive category selection | Good risk-tiering model, but broader than `skillkill` needs |
 | `us/null-e` | Multi-language developer artifacts and caches | CLI commands plus TUI | Good broad cleanup command taxonomy and safety features |
 | `ModClean/modclean` | Removes unwanted files inside `node_modules` | Pattern-based CLI/API | Good configurable pattern idea, but removes files inside packages |
 | `tuananh/node-prune` | Prunes unneeded files from `node_modules` | Batch command | Good before/after size reporting, but less review-oriented |
@@ -113,7 +113,7 @@ Evidence:
 ### mac-cleaner-cli
 
 `mac-cleaner-cli` is a newer npm-runnable cleanup CLI for macOS. It is broader
-than `skill-cleanup`, but its category and risk model is relevant.
+than `skillkill`, but its category and risk model is relevant.
 
 Useful patterns:
 
@@ -137,7 +137,7 @@ Evidence:
 ### null-e
 
 `null-e` is a broad Rust cleanup tool for developer machines. It is useful as a
-reference for a future generalized cleanup tool, but `skill-cleanup` should stay
+reference for a future generalized cleanup tool, but `skillkill` should stay
 narrower.
 
 Useful patterns:
@@ -187,7 +187,7 @@ Evidence:
 - Usage and before/after output:
   https://github.com/tuananh/node-prune/blob/develop/README.md#L24-L42
 
-## Design Implications For `skill-cleanup`
+## Design Implications For `skillkill`
 
 1. Stay narrow like `npkill`: one artifact class, installed agent skills.
 2. Keep terminal-first operation; defer TUI until the table/JSON workflow feels
@@ -208,13 +208,13 @@ Evidence:
 ## Best Borrowed Shape
 
 ```bash
-skill-cleanup
-skill-cleanup --path ~/.agents/skills
-skill-cleanup --commands
-skill-cleanup --json
-skill-cleanup --csv /tmp/skill-cleanup.csv
-skill-cleanup --trash --apply
-skill-cleanup --apply
+skillkill
+skillkill --path ~/.agents/skills
+skillkill --commands
+skillkill --json
+skillkill --csv /tmp/skillkill.csv
+skillkill --trash --apply
+skillkill --apply
 ```
 
 The first version should behave more like `npkill list results + explicit

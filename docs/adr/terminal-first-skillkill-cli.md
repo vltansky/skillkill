@@ -1,4 +1,4 @@
-# ADR: Build `skill-cleanup` as a terminal-first cleanup CLI
+# ADR: Build `skillkill` as a terminal-first cleanup CLI
 
 ## Status
 
@@ -31,14 +31,14 @@ Prior art points in the same direction:
 - `dwipe`, `mac-cleaner-cli`, and `null-e` show useful safety ideas such as
   two-step deletion, trash mode, risk tiers, and category selection.
 
-The research conclusion is that `skill-cleanup` should be "npkill for installed
+The research conclusion is that `skillkill` should be "npkill for installed
 agent skills": narrow artifact class, clear evidence, terminal review,
 reversible apply. It should not start as a broad developer disk cleaner.
 
 ## Decision
 
-Build `skill-cleanup` as a terminal-first CLI project under
-`~/projects/skill-cleanup`.
+Build `skillkill` as a terminal-first CLI project under
+`~/projects/skillkill`.
 
 The CLI will:
 
@@ -110,7 +110,7 @@ the scanner.
 ### Build A Broad Developer Cleaner
 
 Rejected for this project. Tools like `mac-cleaner-cli` and `null-e` show a
-broader category-based cleanup direction, but `skill-cleanup` should stay
+broader category-based cleanup direction, but `skillkill` should stay
 focused on installed agent skills.
 
 ## Follow-Ups
@@ -121,7 +121,7 @@ focused on installed agent skills.
 - Add fixture tests for Codex skill blocks, Claude `attributionSkill`, weak
   path references, never-used skills, and protected dot-prefixed skills.
 - Implement the first-release command surface from `docs/plan.md`.
-- Link `$HOME/.local/bin/skill-cleanup` to the project entrypoint.
+- Link `$HOME/.local/bin/skillkill` to the project entrypoint.
 - Update the old installed skill doc to delegate to this CLI.
 - Revisit `--include`, `--exclude`, quarantine retention, and optional TUI
   after the first release.

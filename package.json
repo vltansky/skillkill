@@ -1,22 +1,33 @@
 {
-  "name": "skill-cleanup",
+  "name": "skillkill",
   "version": "0.1.0",
   "description": "Audit and clean up stale local agent skills.",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vltansky/skill-cleanup.git"
+    "url": "git+https://github.com/vltansky/skillkill.git"
   },
   "bugs": {
-    "url": "https://github.com/vltansky/skill-cleanup/issues"
+    "url": "https://github.com/vltansky/skillkill/issues"
   },
-  "homepage": "https://github.com/vltansky/skill-cleanup#readme",
+  "homepage": "https://github.com/vltansky/skillkill#readme",
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
-    "skill-cleanup": "./bin/skill-cleanup.js"
+    "skillkill": "./bin/skillkill.js",
+    "skill-kill": "./bin/skillkill.js",
+    "skill-cleanup": "./bin/skillkill.js",
+    "skill-prune": "./bin/skillkill.js"
   },
   "scripts": {
     "test": "node --test",
-    "check": "node --check bin/skill-cleanup.js && node --check src/app.js"
+    "check": "node --check bin/skillkill.js && node --check src/app.js && node --check packages/skill-kill/bin/skill-kill.js && node --check packages/skill-cleanup/bin/skill-cleanup.js && node --check packages/skill-prune/bin/skill-prune.js",
+    "lint": "npm run check",
+    "build": "npm pack --dry-run && npm pack ./packages/skill-kill --dry-run && npm pack ./packages/skill-cleanup --dry-run && npm pack ./packages/skill-prune --dry-run"
   },
   "license": "MIT"
 }

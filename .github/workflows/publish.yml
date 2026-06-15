@@ -1,0 +1,67 @@
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run npm publish without publishing
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Pack dry-run
+        run: npm run build
+
+      - name: Publish dry-run
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == 'true' }}
+        run: |
+          npm publish --dry-run --access public --provenance
+          npm publish ./packages/skill-kill --dry-run --access public --provenance
+          npm publish ./packages/skill-cleanup --dry-run --access public --provenance
+          npm publish ./packages/skill-prune --dry-run --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish
+        if: ${{ github.event_name == 'push' || inputs.dry_run == 'false' }}
+        run: |
+          npm publish --access public --provenance
+          npm publish ./packages/skill-kill --access public --provenance
+          npm publish ./packages/skill-cleanup --access public --provenance
+          npm publish ./packages/skill-prune --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

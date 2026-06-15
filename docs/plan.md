@@ -1,8 +1,8 @@
-# skill-cleanup Plan
+# skillkill Plan
 
 ## Direction
 
-Build `skill-cleanup` as a narrow, npkill-style cleanup CLI for one artifact
+Build `skillkill` as a narrow, npkill-style cleanup CLI for one artifact
 class: installed local agent skills.
 
 The command should scan, rank, explain, and optionally quarantine stale skills
@@ -18,7 +18,7 @@ The closest reference is `npx npkill`:
 - Make cleanup explicit and reviewable.
 - Support automation output.
 
-For `skill-cleanup`, the artifact is a skill directory, and the context is usage
+For `skillkill`, the artifact is a skill directory, and the context is usage
 evidence from Codex and Claude transcripts.
 
 ## V1 Scope
@@ -26,16 +26,16 @@ evidence from Codex and Claude transcripts.
 Commands:
 
 ```bash
-skill-cleanup
-skill-cleanup --path ~/.agents/skills
-skill-cleanup --source codex
-skill-cleanup --source claude
-skill-cleanup --commands
-skill-cleanup --json
-skill-cleanup --csv /tmp/skill-cleanup.csv
-skill-cleanup --snapshot ~/.codex/skill-cleanup/snapshots.jsonl
-skill-cleanup --apply
-skill-cleanup --undo latest
+skillkill
+skillkill --path ~/.agents/skills
+skillkill --source codex
+skillkill --source claude
+skillkill --commands
+skillkill --json
+skillkill --csv /tmp/skillkill.csv
+skillkill --snapshot ~/.codex/skillkill/snapshots.jsonl
+skillkill --apply
+skillkill --undo latest
 ```
 
 Behavior:
@@ -64,7 +64,7 @@ Outputs:
    - Move scanner code from the installed skill prototype into this project.
    - Split the script into small modules for args, scanning, row building, and
      output formatting.
-   - Add a `bin` entry for `skill-cleanup`.
+   - Add a `bin` entry for `skillkill`.
 
 2. Add fixture-based tests.
    - Codex transcript with injected skill block.
@@ -89,7 +89,7 @@ Outputs:
    - Preserve protected skills.
 
 5. Wire local install.
-   - Link `$HOME/.local/bin/skill-cleanup` to the project entrypoint.
+   - Link `$HOME/.local/bin/skillkill` to the project entrypoint.
    - Update the old installed skill doc to delegate to the CLI.
 
 ## P1 After V1
@@ -107,4 +107,4 @@ Outputs:
 - TUI as the default experience.
 - Deleting files inside a skill directory.
 - Cleaning unrelated caches, worktrees, packages, or project artifacts.
-- Publishing to npm before the local CLI is stable.
+- Publishing to npm directly from a local shell.

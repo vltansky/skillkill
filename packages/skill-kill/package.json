@@ -1,0 +1,29 @@
+{
+  "name": "skill-kill",
+  "version": "0.1.0",
+  "description": "Alias package for skillkill.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vltansky/skillkill.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vltansky/skillkill/issues"
+  },
+  "homepage": "https://github.com/vltansky/skillkill#readme",
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "bin": {
+    "skill-kill": "./bin/skill-kill.js"
+  },
+  "scripts": {
+    "check": "node --check bin/skill-kill.js",
+    "build": "npm pack --dry-run"
+  },
+  "dependencies": {
+    "skillkill": "0.1.0"
+  },
+  "license": "MIT"
+}

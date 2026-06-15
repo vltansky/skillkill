@@ -12,7 +12,7 @@ import { formatCommands } from "../src/output.js";
 const NOW = new Date("2026-06-15T00:00:00Z");
 
 function makeFixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "skill-cleanup-test-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillkill-test-"));
   const skillsDir = path.join(root, "skills");
   const codexDir = path.join(root, "codex");
   const claudeDir = path.join(root, "claude");
