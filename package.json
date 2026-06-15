@@ -1,0 +1,15 @@
+{
+  "name": "skill-cleanup",
+  "version": "0.1.0",
+  "description": "Audit and clean up stale local agent skills.",
+  "type": "module",
+  "bin": {
+    "skill-cleanup": "./bin/skill-cleanup.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check bin/skill-cleanup.js && node --check src/app.js"
+  },
+  "license": "MIT"
+}
+

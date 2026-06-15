@@ -18,10 +18,25 @@ agent transcripts rather than filesystem access time.
 
 ```bash
 skill-cleanup
+skill-cleanup --path ~/.agents/skills
 skill-cleanup --commands
 skill-cleanup --json
 skill-cleanup --csv /tmp/skill-cleanup.csv
+skill-cleanup --snapshot ~/.codex/skill-cleanup/snapshots.jsonl
 skill-cleanup --apply
 ```
 
 Default behavior is dry-run. `--apply` is the destructive mode.
+
+## Development
+
+```bash
+npm test
+npm run check
+```
+
+Local command link:
+
+```bash
+ln -sf $HOME/projects/skill-cleanup/bin/skill-cleanup.js $HOME/.local/bin/skill-cleanup
+```
