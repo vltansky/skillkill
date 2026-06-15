@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Audit and clean up stale local agent skills.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vltansky/skill-cleanup.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vltansky/skill-cleanup/issues"
+  },
+  "homepage": "https://github.com/vltansky/skill-cleanup#readme",
   "bin": {
     "skill-cleanup": "./bin/skill-cleanup.js"
   },
@@ -12,4 +20,3 @@
   },
   "license": "MIT"
 }
-
