@@ -15,6 +15,8 @@ export const DEFAULT_OPTIONS = {
   snapshot: "",
   stateDir: "~/.local/state/skillkill",
   commands: false,
+  interactive: false,
+  noInteractive: false,
   apply: false,
   undo: "",
 };
@@ -58,12 +60,15 @@ Options:
   --csv PATH                      Write CSV rows
   --snapshot PATH                 Append a JSONL snapshot
   --state-dir PATH                Cleanup state directory (default: ~/.local/state/skillkill)
+  --interactive                   Force interactive terminal review
+  --no-interactive                Print the static table instead of terminal review
   --apply                         Move cleanup candidates to quarantine
   --undo latest|RUN_ID|PATH       Restore a previous cleanup run
   --full-scan                     Parse every JSONL line instead of using ripgrep prefilter
   -h, --help                      Show help
 
-Default behavior is dry-run. --apply writes an undo manifest; restore with --undo latest.
+Default behavior is interactive when stdin/stdout are terminals, otherwise static dry-run.
+--apply writes an undo manifest; restore with --undo latest.
 Command aliases: skill-kill, skill-cleanup, skill-prune.
 `;
 }
@@ -105,6 +110,10 @@ export function parseArgs(argv) {
       i += 1;
     } else if (arg === "--commands") {
       options.commands = true;
+    } else if (arg === "--interactive") {
+      options.interactive = true;
+    } else if (arg === "--no-interactive") {
+      options.noInteractive = true;
     } else if (arg === "--apply") {
       options.apply = true;
     } else if (arg === "--undo") {
@@ -129,6 +138,12 @@ export function parseArgs(argv) {
   }
   if (options.apply && options.commands) {
     throw new Error("--apply cannot be combined with --commands");
+  }
+  if (options.interactive && options.noInteractive) {
+    throw new Error("--interactive cannot be combined with --no-interactive");
+  }
+  if (options.interactive && (options.apply || options.commands || options.json)) {
+    throw new Error("--interactive cannot be combined with --apply, --commands, or --json");
   }
   if (options.undo && (options.apply || options.commands || options.json || options.csv || options.snapshot)) {
     throw new Error("--undo cannot be combined with scan/output/apply options");

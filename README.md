@@ -3,9 +3,9 @@
 `skillkill` is a local CLI for auditing agent skills and cleaning up stale
 or never-used skill directories.
 
-The first design goal is boring safety: the default command reports candidates
-only, cleanup requires an explicit apply flag, and applied cleanup can be
-restored from a manifest.
+The first design goal is boring safety: the default command opens an
+interactive terminal review in a real TTY, cleanup is explicit, and applied
+cleanup can be restored from a manifest.
 
 ## Docs
 
@@ -20,6 +20,7 @@ restored from a manifest.
 npx skillkill
 skillkill
 skillkill --path ~/.agents/skills
+skillkill --no-interactive
 skillkill --commands
 skillkill --json
 skillkill --csv /tmp/skillkill.csv
@@ -28,8 +29,14 @@ skillkill --apply
 skillkill --undo latest
 ```
 
-Default behavior is dry-run. `--apply` moves candidates into a local quarantine
-run and writes an undo manifest. `--undo latest` restores the most recent run.
+Default behavior is interactive when stdin/stdout are terminals. Use arrow keys
+or `j`/`k` to move, `space` or `x` to select, `a` to toggle all candidates, and
+`enter` then `y` to quarantine selected skills.
+
+When output is piped, or when `--no-interactive`, `--commands`, `--json`,
+`--csv`, or `--snapshot` is used, `skillkill` prints static output instead.
+`--apply` moves all candidates into a local quarantine run and writes an undo
+manifest. `--undo latest` restores the most recent run.
 
 Published alias packages delegate to the same CLI:
 

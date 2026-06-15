@@ -32,8 +32,8 @@ Prior art points in the same direction:
   two-step deletion, trash mode, risk tiers, and category selection.
 
 The research conclusion is that `skillkill` should be "npkill for installed
-agent skills": narrow artifact class, clear evidence, terminal review,
-reversible apply. It should not start as a broad developer disk cleaner.
+agent skills": narrow artifact class, clear evidence, interactive terminal
+review, reversible apply. It should not start as a broad developer disk cleaner.
 
 ## Decision
 
@@ -47,14 +47,16 @@ The CLI will:
 - Treat Codex injected skill blocks and Claude `attributionSkill` as strong
   usage evidence.
 - Treat `atime` and raw path mentions as weak context only.
-- Print a dry-run candidate table by default.
+- Open an interactive terminal review by default when stdin/stdout are terminals.
+- Print a static dry-run candidate table when output is piped or
+  `--no-interactive` is passed.
 - Put cleanup candidates first.
 - Require `--apply` for cleanup.
 - Move applied candidates into a local quarantine run with an undo manifest.
 - Support `--undo latest` to restore the most recent cleanup run.
 - Support `--commands`, `--json`, `--csv`, and `--snapshot`.
 - Stay scoped to whole skill directories, not files inside a skill.
-- Treat optional TUI/risk-tier features as later improvements.
+- Treat richer TUI search/filter and risk-tier features as later improvements.
 
 The CLI will not serve Agents UI or generate an interactive browser review.
 The CLI will not clean unrelated developer artifacts such as `node_modules`,
@@ -72,9 +74,9 @@ Positive:
 
 Negative:
 
-- Review decisions are less visual than the Agents UI version.
-- Bulk accept/reject interaction is not available in the first version.
-- Users must rely on terminal output or exported CSV/JSON for review.
+- Review decisions are simpler than the Agents UI version.
+- Search and filter are not available in the first interactive version.
+- Automation must use table, command, CSV, JSON, or snapshot output.
 - The narrow scope means it will not solve broader local disk cleanup problems.
 
 ## Alternatives Considered
@@ -99,13 +101,11 @@ safe for every future workflow.
 Rejected. `--apply` should be undoable by default. Permanent deletion can be a
 future purge operation for old quarantine runs.
 
-### Build A TUI First
+### Build A Static Table First
 
-Deferred. `npkill`, `killpy`, and `dwipe` show that a TUI can be valuable for
-interactive cleanup, especially with search, multi-select, and confirmation.
-For the first release, a table plus JSON/CSV output is enough to validate the
-evidence model and deletion contract. TUI can be added later without changing
-the scanner.
+Rejected as the default experience. `npkill`, `killpy`, and `dwipe` show that
+interactive terminal review is central to this product class. Static table,
+JSON, CSV, and command output remain available for scripts and pipes.
 
 ### Build A Broad Developer Cleaner
 
@@ -123,5 +123,5 @@ focused on installed agent skills.
 - Implement the first-release command surface from `docs/plan.md`.
 - Link `$HOME/.local/bin/skillkill` to the project entrypoint.
 - Update the old installed skill doc to delegate to this CLI.
-- Revisit `--include`, `--exclude`, quarantine retention, and optional TUI
-  after the first release.
+- Revisit `--include`, `--exclude`, quarantine retention, search/filter, and
+  risk tiers after the first release.

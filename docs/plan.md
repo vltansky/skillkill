@@ -5,9 +5,9 @@
 Build `skillkill` as a narrow, npkill-style cleanup CLI for one artifact
 class: installed local agent skills.
 
-The command should scan, rank, explain, and optionally quarantine stale skills
-with an undo manifest. It should not become a broad disk cleaner, package
-manager, marketplace manager, or browser/TUI-first review app in first release.
+The command should scan, rank, explain, and interactively quarantine stale
+skills with an undo manifest. It should not become a broad disk cleaner,
+package manager, marketplace manager, or browser review app in first release.
 
 ## Product Shape
 
@@ -30,6 +30,7 @@ skillkill
 skillkill --path ~/.agents/skills
 skillkill --source codex
 skillkill --source claude
+skillkill --no-interactive
 skillkill --commands
 skillkill --json
 skillkill --csv /tmp/skillkill.csv
@@ -40,8 +41,9 @@ skillkill --undo latest
 
 Behavior:
 
-- Dry-run by default.
-- Candidates first in the default table.
+- Interactive terminal review by default when stdin/stdout are terminals.
+- Static dry-run table when output is piped or `--no-interactive` is passed.
+- Candidates first in both interactive and static views.
 - Strong evidence from Codex injected skill blocks and Claude
   `attributionSkill`.
 - Weak evidence shown only as context.
@@ -74,7 +76,8 @@ Outputs:
    - Dot-prefixed protected skill.
 
 3. Implement CLI output contract.
-   - Default table.
+   - Interactive default view.
+   - Static table with `--no-interactive`.
    - `--commands`.
    - `--json`.
    - `--csv`.
@@ -95,16 +98,15 @@ Outputs:
 ## P1 After V1
 
 - Directory size column for each skill.
+- Search/filter inside the interactive view.
 - `--exclude <skill>` and `--include <skill>`.
 - `--min-age`, `--used-before`, or similar filters if the table gets noisy.
 - Config file for thresholds and protected skills.
 - Optional permanent purge of old quarantine runs.
-- Optional interactive TUI if terminal table review becomes painful.
 
 ## Explicit Non-Goals
 
 - Agents UI review flow.
-- TUI as the default experience.
 - Deleting files inside a skill directory.
 - Cleaning unrelated caches, worktrees, packages, or project artifacts.
 - Publishing to npm directly from a local shell.

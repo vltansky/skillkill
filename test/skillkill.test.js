@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { main } from "../src/app.js";
+import { renderInteractiveScreen, shouldRunInteractive } from "../src/interactive.js";
 import { buildRows } from "../src/model.js";
 import { collectSkills, scanEvidence } from "../src/scan.js";
 import { formatCommands } from "../src/output.js";
@@ -116,6 +117,63 @@ test("formats cleanup commands for candidates only", async () => {
   assert.match(commands, /rm -rf '.*never-used'/);
   assert.doesNotMatch(commands, /recent-skill/);
   assert.doesNotMatch(commands, /\.system-skill/);
+});
+
+test("renders interactive cleanup candidates", async () => {
+  const fixture = makeFixture();
+  const skills = collectSkills(fixture.skillsDir);
+  await scanEvidence(skills, {
+    skillsDir: fixture.skillsDir,
+    codexDir: fixture.codexDir,
+    claudeDir: fixture.claudeDir,
+    source: "all",
+    fullScan: true,
+  });
+  const rows = buildRows(skills, {
+    unusedDays: 45,
+    unusedInstalledDays: 0,
+    now: NOW,
+  });
+
+  const screen = renderInteractiveScreen(
+    rows,
+    { cursor: 0, selected: new Set(["stale-skill"]) },
+    { columns: 120, rows: 24 },
+  );
+
+  assert.match(screen, /skillkill interactive cleanup/);
+  assert.match(screen, /3 cleanup candidates/);
+  assert.match(screen, /\[x\] stale-skill/);
+  assert.match(screen, /space\/x select/);
+  assert.doesNotMatch(screen, /recent-skill/);
+});
+
+test("interactive mode defaults only for real terminals", () => {
+  const defaults = {
+    noInteractive: false,
+    apply: false,
+    commands: false,
+    json: false,
+    undo: "",
+    csv: "",
+    snapshot: "",
+  };
+
+  assert.equal(
+    shouldRunInteractive(defaults, { stdin: { isTTY: true }, stdout: { isTTY: true } }),
+    true,
+  );
+  assert.equal(
+    shouldRunInteractive(defaults, { stdin: { isTTY: false }, stdout: { isTTY: true } }),
+    false,
+  );
+  assert.equal(
+    shouldRunInteractive({ ...defaults, noInteractive: true }, {
+      stdin: { isTTY: true },
+      stdout: { isTTY: true },
+    }),
+    false,
+  );
 });
 
 test("apply quarantines candidates and undo restores them", async () => {

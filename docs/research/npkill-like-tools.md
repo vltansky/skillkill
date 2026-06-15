@@ -190,8 +190,8 @@ Evidence:
 ## Design Implications For `skillkill`
 
 1. Stay narrow like `npkill`: one artifact class, installed agent skills.
-2. Keep terminal-first operation; defer TUI until the table/JSON workflow feels
-   insufficient.
+2. Keep terminal-first operation; use interactive review in real terminals and
+   static output for pipes/automation.
 3. Show size/context when possible: skill name, path, installed age, last strong
    use, evidence counts, and candidate reason.
 4. Keep deletion explicit. Prefer `--apply`, with `--dry-run` implied by
@@ -209,6 +209,7 @@ Evidence:
 
 ```bash
 skillkill
+skillkill --no-interactive
 skillkill --path ~/.agents/skills
 skillkill --commands
 skillkill --json
@@ -217,6 +218,5 @@ skillkill --trash --apply
 skillkill --apply
 ```
 
-The first version should behave more like `npkill list results + explicit
-delete`, not like a broad system cleaner.
-
+The first version should behave more like `npkill for skill directories`, not
+like a broad system cleaner.

@@ -2,6 +2,7 @@ import { parseArgs, printHelp } from "./args.js";
 import { buildRows, payloadFor } from "./model.js";
 import { collectSkills, scanEvidence } from "./scan.js";
 import { formatCommands, formatTable, writeCsv, writeSnapshot } from "./output.js";
+import { runInteractive, shouldRunInteractive } from "./interactive.js";
 import { quarantineCandidates, restoreCleanupRun } from "./quarantine.js";
 
 function write(stream, text) {
@@ -37,6 +38,11 @@ export async function main(argv = process.argv.slice(2), io = {}) {
 
   if (options.csv) writeCsv(options.csv, rows);
   if (options.snapshot) writeSnapshot(options.snapshot, payload, options);
+
+  if (shouldRunInteractive(options, io)) {
+    const interactiveResult = await runInteractive(rows, payload, { ...options, now }, io);
+    if (interactiveResult) return interactiveResult;
+  }
 
   if (options.apply) {
     const result = quarantineCandidates(rows, { ...options, now });

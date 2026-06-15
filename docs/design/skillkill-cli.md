@@ -68,6 +68,7 @@ A candidate row should include:
 skillkill
 skillkill --source codex
 skillkill --source claude
+skillkill --no-interactive
 skillkill --unused-days 60
 skillkill --unused-installed-days 14
 skillkill --commands
@@ -80,7 +81,8 @@ skillkill --undo latest
 
 Suggested semantics:
 
-- `skillkill`: dry-run table, candidates first.
+- `skillkill`: interactive candidate review when stdin/stdout are terminals.
+- `--no-interactive`: static dry-run table, candidates first.
 - `--commands`: print every candidate removal command.
 - `--json`: print full payload for automation.
 - `--csv`: write tabular rows for spreadsheet review.
@@ -97,7 +99,8 @@ and a flag applies the proposed changes.
 
 The destructive path should:
 
-- Require `--apply`.
+- Require explicit confirmation in interactive mode.
+- Require `--apply` for non-interactive cleanup.
 - Print the number of candidates before cleanup.
 - Move candidates into a quarantine run under the state directory.
 - Write a manifest with original and quarantined paths.
@@ -107,8 +110,7 @@ The destructive path should:
 
 Possible future hardening:
 
-- `--apply --yes` for non-interactive cleanup, with interactive confirmation
-  when attached to a TTY.
+- `--apply --yes` for non-interactive cleanup once `--apply` gains a prompt.
 - `--exclude <skill>` and `--include <skill>` for explicit review decisions.
 - `--purge` for deleting old quarantine runs after a retention period.
 
@@ -131,8 +133,7 @@ Possible future hardening:
 
 ## Open Questions
 
-- Should cleanup require `--apply` only, or `--apply --yes` for non-interactive
-  safety?
+- Should non-interactive cleanup require `--apply` only, or `--apply --yes`?
 - Should this be a standalone package, a local script, or part of a broader
   agent-maintenance CLI?
 - Should never-used skills be grouped separately from stale-used skills in the
