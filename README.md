@@ -50,6 +50,20 @@ OpenCode/Cursor path mentions, extra `--evidence-dir` roots, and raw path
 mentions count as weak evidence. Recent weak evidence defers cleanup by default
 because it may indicate use in a provider without native skill attribution.
 
+## Supported Tools
+
+| Tool | Default locations | Strong evidence | Weak evidence |
+| --- | --- | --- | --- |
+| Codex | `~/.codex/sessions`, `~/.codex/archived_sessions` | Injected `<skill><name>...<path>...` transcript blocks | Raw `SKILL.md` path references when included in scanned records; broader path discovery with `--full-scan` |
+| Claude / Claude Code | `~/.claude/history.jsonl`, `~/.claude/projects`, `~/.claude/tasks`, `~/.claude/sessions`, `~/Library/Application Support/Claude/claude-code-sessions`, `~/Library/Application Support/Claude/local-agent-mode-sessions` | `attributionSkill` records | Raw `.claude/skills/.../SKILL.md` or `.agents/skills/.../SKILL.md` path references |
+| OpenCode | `~/.local/share/opencode/storage/message`, `storage/part`, `storage/session/message`, `storage/session/part` | Structured `read` tool parts whose input targets an installed `SKILL.md` | Raw `SKILL.md` path references in message or part JSON |
+| Cursor | `~/.cursor/chats/**/store.db` | Not promoted yet; Cursor storage is undocumented and needs a proper SQLite/blob parser first | Raw `SKILL.md` path references found in chat DB blobs |
+| Extra filesystem roots | Paths passed with `--evidence-dir` | None | Raw `SKILL.md` path references |
+
+Strong evidence drives `last_strong_read`. Weak evidence drives `last_signal_at`
+and protects recent matches from automatic cleanup, but remains lower
+confidence.
+
 ## Whitelist / Omit
 
 Use `--omit` to keep a skill out of cleanup candidates:
