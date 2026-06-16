@@ -1,13 +1,25 @@
-import { parseArgs, printHelp } from "./args.js";
+import { INTERACTIVE_UNDO, parseArgs, printHelp } from "./args.js";
 import { buildRows, payloadFor } from "./model.js";
 import { collectSkills, scanEvidence } from "./scan.js";
 import { formatCommands, formatTable, writeCsv, writeSnapshot } from "./output.js";
 import { runInteractive, shouldRunInteractive } from "./interactive.js";
+import { runInteractiveUndo } from "./undo-interactive.js";
 import { loadOmitPatterns } from "./omit.js";
 import { quarantineCandidates, restoreCleanupRun } from "./quarantine.js";
 
 function write(stream, text) {
   stream.write(text);
+}
+
+function printRestoreResult(stdout, result) {
+  if (!result.manifest) return;
+  write(stdout, `Restored ${result.restored.length} skills from ${result.manifest}.\n`);
+  for (const entry of result.restored) {
+    write(stdout, `restored ${entry.originalPath}\n`);
+  }
+  for (const entry of result.skipped) {
+    write(stdout, `skipped ${entry.skill}: ${entry.reason}\n`);
+  }
 }
 
 export async function main(argv = process.argv.slice(2), io = {}) {
@@ -20,15 +32,15 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     return null;
   }
 
+  if (options.undo === INTERACTIVE_UNDO) {
+    const result = await runInteractiveUndo(options, io);
+    if (result?.undo) printRestoreResult(stdout, result.undo);
+    return result;
+  }
+
   if (options.undo) {
     const result = restoreCleanupRun(options.stateDir, options.undo);
-    write(stdout, `Restored ${result.restored.length} skills from ${result.manifest}.\n`);
-    for (const entry of result.restored) {
-      write(stdout, `restored ${entry.originalPath}\n`);
-    }
-    for (const entry of result.skipped) {
-      write(stdout, `skipped ${entry.skill}: ${entry.reason}\n`);
-    }
+    printRestoreResult(stdout, result);
     return result;
   }
 

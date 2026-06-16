@@ -609,3 +609,80 @@ test("apply quarantines candidates and undo restores them", async () => {
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("recent-skill"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath(".system-skill"))), true);
 });
+
+test("interactive undo restores a selected cleanup run", async () => {
+  const fixture = makeFixture();
+  await main(
+    [
+      "--path",
+      fixture.skillsDir,
+      "--codex-dir",
+      fixture.codexDir,
+      "--claude-dir",
+      fixture.claudeDir,
+      "--claude-app-dir",
+      fixture.claudeAppDir,
+      "--opencode-dir",
+      fixture.opencodeDir,
+      "--cursor-dir",
+      fixture.cursorDir,
+      "--unused-installed-days",
+      "0",
+      "--state-dir",
+      fixture.stateDir,
+      "--apply",
+      "--full-scan",
+    ],
+    {
+      now: NOW,
+      stdout: { write: () => {} },
+      stderr: { write: () => {} },
+    },
+  );
+
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), false);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), false);
+
+  const stdin = new FakeStdin();
+  const stdout = new FakeStdout();
+  const run = main(
+    ["--state-dir", fixture.stateDir, "--undo"],
+    {
+      now: NOW,
+      stdin,
+      stdout,
+      stderr: { write: () => {} },
+    },
+  );
+
+  await waitForOutput(stdout, /skillkill interactive undo/);
+  assert.match(stdout.output, /2\s+ready/);
+  press(stdin, "enter", "\r");
+  await waitForOutput(stdout, /! CONFIRM RESTORE/);
+  assert.match(stdout.output, /Press Y to restore, N\/Esc to go back/);
+  press(stdin, "down");
+  await waitForOutput(stdout, /Waiting for Y to restore or N to cancel/);
+  press(stdin, "y");
+
+  const result = await run;
+  assert.equal(result.undo.restored.length, 2);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), true);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), true);
+  assert.match(stdout.output, /Restored 2 skills/);
+  assert.equal(stdin.paused, true);
+  assert.equal(stdin.isRaw, false);
+});
+
+test("bare undo requires a tty", async () => {
+  const fixture = makeFixture();
+
+  await assert.rejects(
+    () =>
+      main(["--state-dir", fixture.stateDir, "--undo"], {
+        stdin: { isTTY: false },
+        stdout: { isTTY: false, write: () => {} },
+        stderr: { write: () => {} },
+      }),
+    /Interactive undo requires a TTY/,
+  );
+});

@@ -40,6 +40,7 @@ skillkill --json
 skillkill --csv /tmp/skillkill.csv
 skillkill --snapshot ~/.codex/skillkill/snapshots.jsonl
 skillkill --apply
+skillkill --undo
 skillkill --undo latest
 ```
 
@@ -58,7 +59,8 @@ Behavior:
   tools without native skill attribution, but it stays labeled as weak.
 - `--apply` moves candidates into a local quarantine run and prints every moved
   path.
-- `--undo latest` restores the most recent quarantine run.
+- `--undo` opens an interactive restore picker; `--undo latest`, `--undo RUN_ID`,
+  and `--undo PATH` restore directly.
 - `--omit` / `--whitelist` keeps matching skills out of cleanup candidates.
 - `~/.config/skillkill/omit` stores persistent omit patterns.
 - Dot-prefixed system skills are protected by default.

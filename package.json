@@ -25,7 +25,7 @@
   },
   "scripts": {
     "test": "node --test",
-    "check": "node --check bin/skillkill.js && node --check src/app.js && node --check src/interactive.js && node --check src/omit.js && node --check packages/skill-cleanup/bin/skill-cleanup.js && node --check packages/skill-prune/bin/skill-prune.js",
+    "check": "node --check bin/skillkill.js && node --check src/app.js && node --check src/interactive.js && node --check src/undo-interactive.js && node --check src/quarantine.js && node --check src/omit.js && node --check packages/skill-cleanup/bin/skill-cleanup.js && node --check packages/skill-prune/bin/skill-prune.js",
     "lint": "npm run check",
     "build": "npm pack --dry-run && npm pack ./packages/skill-cleanup --dry-run && npm pack ./packages/skill-prune --dry-run"
   },

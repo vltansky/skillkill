@@ -31,6 +31,7 @@ skillkill --json
 skillkill --csv /tmp/skillkill.csv
 skillkill --snapshot ~/.codex/skillkill/snapshots.jsonl
 skillkill --apply
+skillkill --undo
 skillkill --undo latest
 ```
 
@@ -45,7 +46,8 @@ the selected skills, while `N` or `Esc` returns to review.
 When output is piped, or when `--no-interactive`, `--commands`, `--json`,
 `--csv`, or `--snapshot` is used, `skillkill` prints static output instead.
 `--apply` moves all candidates into a local quarantine run and writes an undo
-manifest. `--undo latest` restores the most recent run.
+manifest. `--undo` opens an interactive restore picker. `--undo latest`,
+`--undo RUN_ID`, and `--undo PATH` restore directly for scripts.
 
 `skillkill` scans Codex, Claude, OpenCode, and Cursor local stores by default.
 Codex injected skill blocks, Claude `attributionSkill` records, and structured

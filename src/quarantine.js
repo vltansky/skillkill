@@ -28,16 +28,41 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function latestManifest(stateDir) {
+export function listCleanupRuns(stateDir) {
   const runsDir = path.join(stateDir, "runs");
-  if (!fs.existsSync(runsDir)) return "";
-  const manifests = fs
+  if (!fs.existsSync(runsDir)) return [];
+
+  return fs
     .readdirSync(runsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => manifestPath(path.join(runsDir, entry.name)))
     .filter((file) => fs.existsSync(file))
-    .sort();
-  return manifests.at(-1) || "";
+    .map((file) => {
+      try {
+        const manifest = readJson(file);
+        const id = manifest.id || path.basename(path.dirname(file));
+        const entries = Array.isArray(manifest.entries) ? manifest.entries : [];
+        return {
+          id,
+          manifest: file,
+          createdAt: manifest.createdAt || "",
+          entries,
+          restoredAt: manifest.restoredAt || "",
+          restored: Array.isArray(manifest.restored) ? manifest.restored : [],
+          skipped: Array.isArray(manifest.skipped) ? manifest.skipped : [],
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) =>
+      `${right.createdAt || right.id}`.localeCompare(`${left.createdAt || left.id}`),
+    );
+}
+
+function latestManifest(stateDir) {
+  return listCleanupRuns(stateDir)[0]?.manifest || "";
 }
 
 export function resolveUndoManifest(stateDir, undoTarget) {
@@ -123,4 +148,3 @@ export function restoreCleanupRun(stateDir, undoTarget) {
 
   return { manifest: file, restored, skipped };
 }
-

@@ -29,6 +29,8 @@ export const DEFAULT_OPTIONS = {
   undo: "",
 };
 
+export const INTERACTIVE_UNDO = "__interactive_undo__";
+
 export function expandHome(value, home = os.homedir()) {
   if (!value) return value;
   if (value === "~") return home;
@@ -40,6 +42,12 @@ function readNext(argv, index, arg) {
   if (value === undefined || value.startsWith("--")) {
     throw new Error(`${arg} requires a value`);
   }
+  return value;
+}
+
+function readOptionalNext(argv, index) {
+  const value = argv[index + 1];
+  if (value === undefined || value.startsWith("--")) return "";
   return value;
 }
 
@@ -82,12 +90,12 @@ Options:
   --interactive                   Force interactive terminal review
   --no-interactive                Print the static table instead of terminal review
   --apply                         Move cleanup candidates to quarantine
-  --undo latest|RUN_ID|PATH       Restore a previous cleanup run
+  --undo [latest|RUN_ID|PATH]     Restore a previous cleanup run
   --full-scan                     Parse every JSONL line instead of using ripgrep prefilter
   -h, --help                      Show help
 
 Default behavior is interactive when stdin/stdout are terminals, otherwise static dry-run.
---apply writes an undo manifest; restore with --undo latest.
+--apply writes an undo manifest; restore interactively with --undo or directly with --undo latest.
 Command aliases: skill-kill, skill-cleanup, skill-prune.
 `;
 }
@@ -163,8 +171,9 @@ export function parseArgs(argv) {
     } else if (arg === "--apply") {
       options.apply = true;
     } else if (arg === "--undo") {
-      options.undo = readNext(argv, i, arg);
-      i += 1;
+      const value = readOptionalNext(argv, i);
+      options.undo = value || INTERACTIVE_UNDO;
+      if (value) i += 1;
     } else if (arg === "--full-scan") {
       options.fullScan = true;
     } else if (arg === "--json") {
@@ -221,7 +230,9 @@ export function parseArgs(argv) {
         .filter(Boolean),
     ),
     undo:
-      options.undo && (options.undo.includes("/") || options.undo.startsWith("~"))
+      options.undo &&
+      options.undo !== INTERACTIVE_UNDO &&
+      (options.undo.includes("/") || options.undo.startsWith("~"))
         ? path.resolve(expandHome(options.undo))
         : options.undo,
   };

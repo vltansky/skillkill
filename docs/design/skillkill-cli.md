@@ -94,6 +94,7 @@ skillkill --json
 skillkill --csv /tmp/skillkill.csv
 skillkill --snapshot ~/.codex/skillkill/snapshots.jsonl
 skillkill --apply
+skillkill --undo
 skillkill --undo latest
 ```
 
@@ -115,7 +116,8 @@ Suggested semantics:
 - `--omit-file`: load persistent omit patterns from a file.
 - `--apply`: move candidates into a local quarantine run and write an undo
   manifest.
-- `--undo latest`: restore the most recent quarantine run.
+- `--undo`: open an interactive restore picker.
+- `--undo latest`, `--undo RUN_ID`, `--undo PATH`: restore directly.
 
 `--delete` may be accepted as a compatibility alias, but docs should prefer
 `--apply`. The word "apply" fits maintenance CLIs where the default is preview
