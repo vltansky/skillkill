@@ -33,11 +33,12 @@ function fitCell(value, width) {
 
 export function formatTable(rows, limit, options = {}) {
   const windowDays = options.savingsDays ?? rows[0]?.usage_window_days ?? 30;
+  const recentNewChats = options.recentNewChats ?? 0;
   const columns = [
     ["skill", 30],
     ["risk", 9],
     ["tokens", 10],
-    [`${windowDays}d use`, 12],
+    [`${windowDays}d burn`, 12],
     ["last_verified_use", 36],
     ["installed date", 14],
     ["last_any_signal", 19],
@@ -57,7 +58,7 @@ export function formatTable(rows, limit, options = {}) {
       row.skill,
       row.risk,
       formatNumber(row.description_token_cost),
-      formatNumber(row.used_window_tokens),
+      formatNumber(row.description_token_cost * recentNewChats),
       verifiedUseCell(row, 36, options.links),
       formatDateOnly(row.installed_at),
       formatDateMinute(row.last_any_signal),
@@ -78,6 +79,7 @@ export function formatTable(rows, limit, options = {}) {
     "",
     "verified use = native skill invocation; path mention = raw SKILL.md path found in local history.",
     "cleanup reason = why the row is selected for cleanup or protected from cleanup.",
+    `${windowDays}d burn = description tokens multiplied by ${formatNumber(recentNewChats)} new chats found in the last ${formatNumber(windowDays)} days.`,
   );
 
   const commands = rows

@@ -115,6 +115,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     write(stdout, formatTable(rows, options.limit, {
       links: shouldUseLinks(stdout),
       savingsDays: options.savingsDays,
+      recentNewChats: payload.summary.recentNewChats,
     }));
     write(
       stdout,

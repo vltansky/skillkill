@@ -112,12 +112,13 @@ skillkill --undo latest
 skillkill undo latest
 ```
 
-Rows include `risk`, `description_token_cost`, and `used_14d_tokens`. Token cost
-is a rough estimate from the skill `description` frontmatter field.
-`used_14d_tokens` multiplies that cost by verified uses in the last 14 days.
-Human tables show the current `--savings-days` token window as `30d use` by
-default, plus installed date and a terminal hyperlink on the last verified chat
-label when the terminal supports it.
+Rows include `risk`, `description_token_cost`, and `used_window_tokens`. Token
+cost is a rough estimate from the skill `description` frontmatter field.
+`used_window_tokens` is observed cost from verified uses in the current
+`--savings-days` window. Human tables show `30d burn` by default: each skill's
+description tokens multiplied by distinct new local chat/session artifacts found
+in the last `--savings-days` window. They also show installed date and a
+terminal hyperlink on the last verified chat label when the terminal supports it.
 
 The interactive confirmation screen shows the selected skills, description
 tokens removed per future skill-catalog load, and observed token cost from

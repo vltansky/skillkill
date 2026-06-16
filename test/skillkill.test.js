@@ -411,14 +411,15 @@ test("formats cleanup commands for candidates only", async () => {
   assert.doesNotMatch(commands, /recent-skill/);
   assert.doesNotMatch(commands, /\.system-skill/);
 
-  const table = formatTable(rows, 5);
-  assert.match(table, /30d use/);
+  const table = formatTable(rows, 5, { recentNewChats: 2 });
+  assert.match(table, /30d burn/);
+  assert.match(table, /30d burn = description tokens multiplied by 2 new chats/);
   assert.match(table, /last_verified_use/);
   assert.match(table, /installed date/);
   assert.doesNotMatch(table, /2026-04-01 00:00:00/);
   assert.match(table, /2026-04-01 00:00/);
 
-  const linkedTable = formatTable(rows, 5, { links: true, savingsDays: 30 });
+  const linkedTable = formatTable(rows, 5, { links: true, recentNewChats: 2, savingsDays: 30 });
   assert.match(linkedTable, /\x1b]8;;file:\/\//);
 });
 
@@ -704,17 +705,17 @@ test("renders interactive cleanup candidates", async () => {
 
   const screen = renderInteractiveScreen(
     rows,
-    { cursor: 0, selected: new Set([staleRow.id]) },
+    { cursor: 0, selected: new Set([staleRow.id]), recentNewChats: 2 },
     { columns: 120, rows: 24 },
   );
 
   assert.match(screen, /skillkill interactive cleanup/);
   assert.match(screen, /2 cleanup candidates/);
-  assert.match(screen, /risk\s+tokens\s+30d use\s+skill\s+cleanup reason\s+last verified use\s+installed/);
+  assert.match(screen, /risk\s+tokens\s+30d burn\s+skill\s+cleanup reason\s+last verified use\s+installed/);
   assert.doesNotMatch(screen, /\x1b\[/);
   assert.doesNotMatch(screen, /status/);
   assert.doesNotMatch(screen, /last strong use/);
-  assert.match(screen, /\[x\] low\s+\d+\s+0\s+stale-skill/);
+  assert.match(screen, /\[x\] low\s+\d+\s+22\s+stale-skill/);
   assert.doesNotMatch(screen, /2026-04-01 00:00:00/);
   assert.match(screen, /2026-04-01 00:00/);
   assert.match(screen, /o omit/);
@@ -731,7 +732,7 @@ test("renders interactive cleanup candidates", async () => {
 
   const linkedScreen = renderInteractiveScreen(
     rows,
-    { cursor: 0, selected: new Set([staleRow.id]), savingsDays: 30 },
+    { cursor: 0, selected: new Set([staleRow.id]), recentNewChats: 2, savingsDays: 30 },
     { columns: 140, rows: 24, links: true },
   );
 
