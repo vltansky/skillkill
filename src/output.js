@@ -1,14 +1,45 @@
 import fs from "node:fs";
 import path from "node:path";
-import { formatNumber } from "./format.js";
+import { formatDateMinute, formatDateOnly, formatNumber, hyperlink } from "./format.js";
 
-export function formatTable(rows, limit) {
+function clipped(value, width) {
+  const text = String(value || "");
+  if (!width) return text;
+  return text.length > width ? `${text.slice(0, width - 1)}.` : text;
+}
+
+function cell(text, visibleLength = String(text || "").length) {
+  return { text: String(text || ""), visibleLength };
+}
+
+function verifiedUseCell(row, width, links) {
+  const date = formatDateMinute(row.last_verified_use);
+  const title = row.last_verified_chat_title || "";
+  if (!title || date === "-") return cell(date, date.length);
+
+  const titleWidth = Math.max(0, width - date.length - 1);
+  const label = clipped(title, titleWidth);
+  return cell(`${date} ${hyperlink(label, row.last_verified_href, links)}`, date.length + 1 + label.length);
+}
+
+function fitCell(value, width) {
+  if (!width) return typeof value === "object" ? value.text : String(value);
+  if (typeof value === "object") {
+    return `${value.text}${" ".repeat(Math.max(0, width - value.visibleLength))}`;
+  }
+  const text = String(value || "");
+  return text.length > width ? `${text.slice(0, width - 1)}.` : text.padEnd(width);
+}
+
+export function formatTable(rows, limit, options = {}) {
+  const windowDays = options.savingsDays ?? rows[0]?.usage_window_days ?? 30;
   const columns = [
     ["skill", 30],
     ["risk", 9],
     ["tokens", 10],
-    ["used_14d_tokens", 18],
-    ["last_verified_use", 19],
+    [`${windowDays}d use`, 12],
+    ["last_verified_use", 36],
+    ["installed date", 14],
     ["last_any_signal", 19],
     ["verified", 8],
     ["mentions", 8],
@@ -26,9 +57,10 @@ export function formatTable(rows, limit) {
       row.skill,
       row.risk,
       formatNumber(row.description_token_cost),
-      formatNumber(row.used_14d_tokens),
-      row.last_verified_use || "-",
-      row.last_any_signal || "-",
+      formatNumber(row.used_window_tokens),
+      verifiedUseCell(row, 36, options.links),
+      formatDateOnly(row.installed_at),
+      formatDateMinute(row.last_any_signal),
       formatNumber(row.verified_use_count),
       formatNumber(row.path_mention_count),
       row.cleanup_candidate ? "yes" : "no",
@@ -37,11 +69,7 @@ export function formatTable(rows, limit) {
     ];
     lines.push(
       values
-        .map((value, index) => {
-          const width = columns[index][1];
-          if (!width) return value;
-          return value.length > width ? `${value.slice(0, width - 1)}.` : value.padEnd(width);
-        })
+        .map((value, index) => fitCell(value, columns[index][1]))
         .join(" | "),
     );
   }

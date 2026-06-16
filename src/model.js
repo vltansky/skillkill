@@ -1,5 +1,6 @@
 import path from "node:path";
 import { shellQuote } from "./fs-utils.js";
+import { fileHref } from "./format.js";
 import { findOmitMatch } from "./omit.js";
 
 export function parseTimestamp(value) {
@@ -54,6 +55,19 @@ function latest(items) {
   return new Date(Math.max(...dates.map((date) => date.getTime())));
 }
 
+function latestItem(items) {
+  return items
+    .filter((item) => item.ts)
+    .sort((left, right) => right.ts.getTime() - left.ts.getTime())[0] || null;
+}
+
+function evidenceTitle(item) {
+  if (!item) return "";
+  if (item.chatTitle) return item.chatTitle;
+  if (item.sourceFile) return path.parse(item.sourceFile).name || path.basename(item.sourceFile);
+  return String(item.source || "").split(":")[0];
+}
+
 function recent(items, now, days) {
   return items.filter((item) => item.ts && ageDays(item.ts, now) <= days);
 }
@@ -88,7 +102,8 @@ export function buildRows(skills, options) {
   const usageTokenWindowDays = 14;
   return [...skills.values()]
     .map((usage) => {
-      const lastStrong = latest(usage.strong);
+      const lastStrongEvidence = latestItem(usage.strong);
+      const lastStrong = lastStrongEvidence?.ts || null;
       const lastWeak = latest(usage.weak);
       const lastSignal = latest([...usage.strong, ...usage.weak]);
       const recentStrongSignals = recent(usage.strong, now, savingsDays);
@@ -165,6 +180,9 @@ export function buildRows(skills, options) {
         description_token_cost: descriptionTokenCost,
         verified_uses_14d: verifiedUses14d.length,
         used_14d_tokens: descriptionTokenCost * verifiedUses14d.length,
+        verified_uses_window: recentStrongSignals.length,
+        used_window_tokens: descriptionTokenCost * recentStrongSignals.length,
+        usage_window_days: savingsDays,
         strong_count: usage.strong.length,
         codex_strong_count: codexStrongCount,
         claude_strong_count: claudeStrongCount,
@@ -173,6 +191,11 @@ export function buildRows(skills, options) {
         filesystem_strong_count: filesystemStrongCount,
         last_strong_read: formatDate(lastStrong),
         last_verified_use: formatDate(lastStrong),
+        last_verified_chat_title: evidenceTitle(lastStrongEvidence),
+        last_verified_source: lastStrongEvidence?.source || "",
+        last_verified_file: lastStrongEvidence?.sourceFile || "",
+        last_verified_line: lastStrongEvidence?.sourceLine || "",
+        last_verified_href: fileHref(lastStrongEvidence?.sourceFile),
         strong_age_days: strongAgeDays,
         weak_path_refs: usage.weak.length,
         verified_use_count: usage.strong.length,
@@ -290,6 +313,7 @@ export function payloadFor(rows, options, scanStats, now = new Date()) {
         (scanStats.recentNewChats || 0),
       recentActivitySignals: rows.reduce((sum, row) => sum + row.recent_signal_count, 0),
       used14dTokens: rows.reduce((sum, row) => sum + row.used_14d_tokens, 0),
+      usedWindowTokens: rows.reduce((sum, row) => sum + row.used_window_tokens, 0),
       scanMs: scanStats.elapsedMs,
       matchedLines: scanBuckets.reduce((sum, bucket) => sum + bucket.matchedLines, 0),
       parsedRecords: scanBuckets.reduce((sum, bucket) => sum + bucket.parsedRecords, 0),

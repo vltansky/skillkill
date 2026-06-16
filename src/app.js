@@ -1,5 +1,6 @@
 import { INTERACTIVE_UNDO, parseArgs, printHelp } from "./args.js";
 import { formatCleanupResult } from "./cleanup-result.js";
+import { shouldUseLinks } from "./format.js";
 import { buildRows, payloadFor } from "./model.js";
 import { collectSkills, scanEvidence } from "./scan.js";
 import { formatCommands, formatTable, writeCsv, writeSnapshot } from "./output.js";
@@ -111,7 +112,10 @@ export async function main(argv = process.argv.slice(2), io = {}) {
   } else if (options.json) {
     write(stdout, `${JSON.stringify(payload, null, 2)}\n`);
   } else {
-    write(stdout, formatTable(rows, options.limit));
+    write(stdout, formatTable(rows, options.limit, {
+      links: shouldUseLinks(stdout),
+      savingsDays: options.savingsDays,
+    }));
     write(
       stdout,
       `\nScanned ${payload.summary.parsedRecords} matching records in ${payload.summary.scanMs}ms (${payload.summary.matchedLines} matching lines).\n`,

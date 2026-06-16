@@ -1,7 +1,13 @@
 import readline from "node:readline";
 import { colors, shouldUseColor } from "./ansi.js";
 import { formatCleanupResult } from "./cleanup-result.js";
-import { formatNumber } from "./format.js";
+import {
+  formatDateMinute,
+  formatDateOnly,
+  formatNumber,
+  hyperlink,
+  shouldUseLinks,
+} from "./format.js";
 import { appendOmitPattern } from "./omit.js";
 import { deleteCandidates, quarantineCandidates } from "./quarantine.js";
 
@@ -17,6 +23,18 @@ function clip(value, width) {
   const text = value === null || value === undefined ? "" : String(value);
   if (width <= 1) return text.slice(0, Math.max(0, width));
   return text.length > width ? `${text.slice(0, width - 1)}.` : text.padEnd(width);
+}
+
+function verifiedUseCell(row, width, links) {
+  const date = formatDateMinute(row.last_verified_use);
+  const title = row.last_verified_chat_title || "";
+  if (!title || date === "-") return clip(date, width);
+
+  const titleWidth = Math.max(0, width - date.length - 1);
+  const label = clip(title, titleWidth).trimEnd();
+  const visibleLength = date.length + 1 + label.length;
+  const text = `${date} ${hyperlink(label, row.last_verified_href, links)}`;
+  return `${text}${" ".repeat(Math.max(0, width - visibleLength))}`;
 }
 
 function rowSearchText(row) {
@@ -120,17 +138,28 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   );
   const end = Math.min(candidates.length, start + visible);
   const selectedVisible = candidates.filter((row) => selected.has(rowKey(row))).length;
+  const windowDays = state.savingsDays ?? rows[0]?.usage_window_days ?? 30;
   const riskWidth = 9;
   const tokenWidth = 10;
-  const used14dWidth = 12;
+  const usedWindowWidth = 12;
   const nameWidth = Math.min(30, Math.max(18, Math.floor(width * 0.24)));
   const reasonWidth = Math.min(38, Math.max(20, Math.floor(width * 0.32)));
-  const dateWidth = 19;
+  const verifiedWidth = 34;
+  const installedWidth = 12;
   const pathWidth = Math.max(
     14,
-    width - nameWidth - reasonWidth - dateWidth - riskWidth - tokenWidth - used14dWidth - 22,
+    width -
+      nameWidth -
+      reasonWidth -
+      verifiedWidth -
+      installedWidth -
+      riskWidth -
+      tokenWidth -
+      usedWindowWidth -
+      24,
   );
   const search = String(state.search || "");
+  const links = Boolean(dimensions.links);
 
   const lines = [
     color.title("skillkill interactive cleanup"),
@@ -139,10 +168,10 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     ),
     "",
     color.header(
-      `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip("14d use", used14dWidth)} ${clip("skill", nameWidth)} ${clip("cleanup reason", reasonWidth)} ${clip("last verified use", dateWidth)} ${clip("path", pathWidth)}`,
+      `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip(`${windowDays}d use`, usedWindowWidth)} ${clip("skill", nameWidth)} ${clip("cleanup reason", reasonWidth)} ${clip("last verified use", verifiedWidth)} ${clip("installed", installedWidth)} ${clip("path", pathWidth)}`,
     ),
     color.dim(
-      `   --- ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(used14dWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(pathWidth)}`,
+      `   --- ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(usedWindowWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(verifiedWidth)} ${"-".repeat(installedWidth)} ${"-".repeat(pathWidth)}`,
     ),
   ];
 
@@ -162,7 +191,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
         ? color.good(clip(row.skill, nameWidth))
         : clip(row.skill, nameWidth);
       lines.push(
-        `${active} ${mark} ${color.risk(clip(row.risk, riskWidth), row.risk)} ${color.token(clip(formatNumber(row.description_token_cost), tokenWidth))} ${color.usage(clip(formatNumber(row.used_14d_tokens), used14dWidth), row.used_14d_tokens)} ${skill} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_verified_use || "-", dateWidth)} ${color.dim(clip(row.path, pathWidth))}`,
+        `${active} ${mark} ${color.risk(clip(row.risk, riskWidth), row.risk)} ${color.token(clip(formatNumber(row.description_token_cost), tokenWidth))} ${color.usage(clip(formatNumber(row.used_window_tokens), usedWindowWidth), row.used_window_tokens)} ${skill} ${clip(row.cleanup_reason, reasonWidth)} ${verifiedUseCell(row, verifiedWidth, links)} ${clip(formatDateOnly(row.installed_at), installedWidth)} ${color.dim(clip(row.path, pathWidth))}`,
       );
     }
   }
@@ -182,7 +211,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   );
   lines.push(color.dim("Use --no-interactive for the static table. Cleanup is quarantine-only and undoable."));
   lines.push(color.dim("Verified use means native skill invocation; cleanup reason explains why removal is proposed."));
-  lines.push(color.dim("14d use is description tokens multiplied by verified uses in the last 14 days."));
+  lines.push(color.dim(`${windowDays}d use is description tokens multiplied by verified uses in the last ${windowDays} days.`));
   return `${lines.join("\n")}\n`;
 }
 
@@ -252,6 +281,7 @@ function render(stdout, rows, state) {
       columns: stdout.columns,
       rows: stdout.rows,
       colors: shouldUseColor(stdout),
+      links: shouldUseLinks(stdout),
     }),
   );
 }

@@ -61,6 +61,38 @@ function sourcePointer(file, lineNo) {
   return lineNo ? `${sourceLabel(file)}:${lineNo}` : sourceLabel(file);
 }
 
+function cleanTitle(value) {
+  const title = String(value || "").trim().replace(/\s+/g, " ");
+  if (!title || title.length > 120) return "";
+  return title;
+}
+
+function recordTitle(record) {
+  if (!record || typeof record !== "object") return "";
+  return (
+    cleanTitle(record.title) ||
+    cleanTitle(record.chatTitle) ||
+    cleanTitle(record.conversationTitle) ||
+    cleanTitle(record.sessionTitle) ||
+    cleanTitle(record.metadata?.title) ||
+    cleanTitle(record.session?.title) ||
+    cleanTitle(record.conversation?.title) ||
+    cleanTitle(record.payload?.title)
+  );
+}
+
+function fileTitle(file) {
+  const parsed = path.parse(file);
+  if (["conversation", "message", "part", "store"].includes(parsed.name)) {
+    return path.basename(path.dirname(file)) || parsed.name;
+  }
+  return parsed.name || path.basename(file);
+}
+
+function chatTitle(record, file) {
+  return recordTitle(record) || fileTitle(file);
+}
+
 function fileTimestamp(file) {
   try {
     return fs.statSync(file).mtime;
@@ -328,6 +360,9 @@ function addSkillPathReferences(skills, options, text, context) {
           ts: context.ts,
           kind: context.kind,
           source: context.source,
+          sourceFile: context.sourceFile,
+          sourceLine: context.sourceLine,
+          chatTitle: context.chatTitle,
         },
         strong,
       )
@@ -348,6 +383,9 @@ function addSkillPathReferences(skills, options, text, context) {
             ts: context.ts,
             kind: context.kind,
             source: context.source,
+            sourceFile: context.sourceFile,
+            sourceLine: context.sourceLine,
+            chatTitle: context.chatTitle,
           },
           strong,
         )
@@ -699,6 +737,9 @@ async function scanCodex(skills, options, stats) {
               ts,
               kind: "codex_skill_block",
               source: `${sourceLabel(file)}:${lineNo}`,
+              sourceFile: file,
+              sourceLine: lineNo,
+              chatTitle: chatTitle(record, file),
             },
             true,
           )
@@ -711,6 +752,9 @@ async function scanCodex(skills, options, stats) {
         ts,
         kind: "codex_path_reference",
         source: sourcePointer(file, lineNo),
+        sourceFile: file,
+        sourceLine: lineNo,
+        chatTitle: chatTitle(record, file),
         stats: stats.codex,
       });
     },
@@ -782,6 +826,9 @@ async function scanClaude(skills, options, stats) {
             ts,
             kind: "claude_attribution_skill",
             source: sourcePointer(file, lineNo),
+            sourceFile: file,
+            sourceLine: lineNo,
+            chatTitle: chatTitle(record, file),
           },
           true,
         )
@@ -794,6 +841,9 @@ async function scanClaude(skills, options, stats) {
       ts,
       kind: "claude_path_reference",
       source: sourcePointer(file, lineNo),
+      sourceFile: file,
+      sourceLine: lineNo,
+      chatTitle: chatTitle(record, file),
       aliases,
       stats: stats.claude,
     });
@@ -851,12 +901,18 @@ async function scanOpencode(skills, options, stats) {
         ts,
         kind: "opencode_tool_read_skill",
         source: sourcePointer(file, null),
+        sourceFile: file,
+        sourceLine: null,
+        chatTitle: chatTitle(record, file),
         stats: stats.opencode,
       });
       addSkillPathReferences(skills, options, jsonStrings(record).join("\n"), {
         ts,
         kind: "opencode_path_reference",
         source: sourcePointer(file, null),
+        sourceFile: file,
+        sourceLine: null,
+        chatTitle: chatTitle(record, file),
         stats: stats.opencode,
       });
     },
