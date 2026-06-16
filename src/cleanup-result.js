@@ -1,4 +1,5 @@
 import { colors, shouldUseColor } from "./ansi.js";
+import { formatNumber } from "./format.js";
 
 function plural(count, one, many = `${one}s`) {
   return count === 1 ? one : many;
@@ -28,7 +29,7 @@ export function formatCleanupResult(result, options = {}) {
 
   const permanent = result.mode === "delete";
   const action = permanent ? "permanently deleted" : "quarantined";
-  const title = `${action[0].toUpperCase()}${action.slice(1)} ${result.count} ${plural(result.count, "skill")}`;
+  const title = `${action[0].toUpperCase()}${action.slice(1)} ${formatNumber(result.count)} ${plural(result.count, "skill")}`;
   const savingsDays = result.savingsDays ?? options.savingsDays ?? 30;
   const recentNewChats = result.recentNewChats ?? options.recentNewChats ?? 0;
   const summary = cleanupSummary(result.entries || [], savingsDays);
@@ -37,14 +38,14 @@ export function formatCleanupResult(result, options = {}) {
     color.good(`Done: ${title}`),
     "",
     color.header("Token savings"),
-    `  Saved per skill-catalog load: ${color.token(summary.removedTokens)} description tokens`,
-    `  Potential new-chat savings: ${color.token(summary.removedTokens)} x ${color.info(recentNewChats)} new ${plural(recentNewChats, "chat")} in last ${summary.savingsDays} days = ${color.good(potentialNewChatSavings)} tokens`,
-    `  Selected verified uses in last ${summary.savingsDays} days: ${color.info(summary.recentVerifiedUses)}`,
-    `  Observed selected-use prompt cost removed: ${color.token(summary.observedUseTokens)} tokens`,
+    `  Saved per skill-catalog load: ${color.token(formatNumber(summary.removedTokens))} description tokens`,
+    `  Potential new-chat savings: ${color.token(formatNumber(summary.removedTokens))} x ${color.info(formatNumber(recentNewChats))} new ${plural(recentNewChats, "chat")} in last ${formatNumber(summary.savingsDays)} days = ${color.good(formatNumber(potentialNewChatSavings))} tokens`,
+    `  Selected verified uses in last ${formatNumber(summary.savingsDays)} days: ${color.info(formatNumber(summary.recentVerifiedUses))}`,
+    `  Observed selected-use prompt cost removed: ${color.token(formatNumber(summary.observedUseTokens))} tokens`,
   ];
 
   if (summary.recentPathMentions > 0) {
-    lines.push(`  Path mentions in window: ${color.dim(summary.recentPathMentions)} (not counted as verified use)`);
+    lines.push(`  Path mentions in window: ${color.dim(formatNumber(summary.recentPathMentions))} (not counted as verified use)`);
   }
 
   lines.push("", color.header(permanent ? "Deleted paths" : "Moved paths"));
@@ -60,7 +61,7 @@ export function formatCleanupResult(result, options = {}) {
 
   if (result.vercelLocks?.removed?.length) {
     lines.push("", color.header("Vercel skills lock"));
-    lines.push(`  Removed ${color.warn(result.vercelLocks.removed.length)} entries.`);
+    lines.push(`  Removed ${color.warn(formatNumber(result.vercelLocks.removed.length))} entries.`);
   }
   for (const error of result.vercelLocks?.errors || []) {
     lines.push(`  ${color.warn(`Could not update ${error.lockPath}: ${error.error}`)}`);

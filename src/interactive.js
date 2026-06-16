@@ -1,6 +1,7 @@
 import readline from "node:readline";
 import { colors, shouldUseColor } from "./ansi.js";
 import { formatCleanupResult } from "./cleanup-result.js";
+import { formatNumber } from "./format.js";
 import { appendOmitPattern } from "./omit.js";
 import { deleteCandidates, quarantineCandidates } from "./quarantine.js";
 
@@ -120,8 +121,8 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   const end = Math.min(candidates.length, start + visible);
   const selectedVisible = candidates.filter((row) => selected.has(rowKey(row))).length;
   const riskWidth = 9;
-  const tokenWidth = 6;
-  const used14dWidth = 9;
+  const tokenWidth = 10;
+  const used14dWidth = 12;
   const nameWidth = Math.min(30, Math.max(18, Math.floor(width * 0.24)));
   const reasonWidth = Math.min(38, Math.max(20, Math.floor(width * 0.32)));
   const dateWidth = 19;
@@ -134,7 +135,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   const lines = [
     color.title("skillkill interactive cleanup"),
     color.dim(
-      `${allCandidates.length} cleanup candidates, ${selectedVisible} selected${search ? `, ${candidates.length} visible for /${search}` : ""}${omitted.size ? `, ${omitted.size} omitted this run` : ""}${searchHidden ? `, ${searchHidden} hidden by search` : ""}${protectedHidden ? `, ${protectedHidden} protected/recent/omitted` : ""}`,
+      `${formatNumber(allCandidates.length)} cleanup candidates, ${formatNumber(selectedVisible)} selected${search ? `, ${formatNumber(candidates.length)} visible for /${search}` : ""}${omitted.size ? `, ${formatNumber(omitted.size)} omitted this run` : ""}${searchHidden ? `, ${formatNumber(searchHidden)} hidden by search` : ""}${protectedHidden ? `, ${formatNumber(protectedHidden)} protected/recent/omitted` : ""}`,
     ),
     "",
     color.header(
@@ -161,7 +162,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
         ? color.good(clip(row.skill, nameWidth))
         : clip(row.skill, nameWidth);
       lines.push(
-        `${active} ${mark} ${color.risk(clip(row.risk, riskWidth), row.risk)} ${color.token(clip(row.description_token_cost, tokenWidth))} ${color.usage(clip(row.used_14d_tokens, used14dWidth), row.used_14d_tokens)} ${skill} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_verified_use || "-", dateWidth)} ${color.dim(clip(row.path, pathWidth))}`,
+        `${active} ${mark} ${color.risk(clip(row.risk, riskWidth), row.risk)} ${color.token(clip(formatNumber(row.description_token_cost), tokenWidth))} ${color.usage(clip(formatNumber(row.used_14d_tokens), used14dWidth), row.used_14d_tokens)} ${skill} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_verified_use || "-", dateWidth)} ${color.dim(clip(row.path, pathWidth))}`,
       );
     }
   }
@@ -202,8 +203,8 @@ function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
     color.warn(deleteMode ? "skillkill confirm permanent delete" : "skillkill confirm cleanup"),
     "",
     deleteMode
-      ? color.danger(`You are going to permanently delete ${picked.length} skills from active use.`)
-      : color.danger(`You are going to remove ${picked.length} skills from active use and move them to quarantine.`),
+      ? color.danger(`You are going to permanently delete ${formatNumber(picked.length)} ${plural(picked.length, "skill")} from active use.`)
+      : color.danger(`You are going to remove ${formatNumber(picked.length)} ${plural(picked.length, "skill")} from active use and move them to quarantine.`),
     deleteMode
       ? color.danger("This does not write an undo manifest.")
       : color.dim("This is undoable with skillkill --undo."),
@@ -216,20 +217,20 @@ function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
   } else {
     for (const row of shown) {
       lines.push(
-        `  - ${color.good(clip(row.skill, skillWidth))} ${color.token(clip(`${row.description_token_cost} tokens`, 12))} ${clip(row.cleanup_reason, reasonWidth)}`,
+        `  - ${color.good(clip(row.skill, skillWidth))} ${color.token(clip(`${formatNumber(row.description_token_cost)} tokens`, 16))} ${clip(row.cleanup_reason, reasonWidth)}`,
       );
     }
-    if (hidden) lines.push(color.dim(`  ... and ${hidden} more`));
+    if (hidden) lines.push(color.dim(`  ... and ${formatNumber(hidden)} more`));
   }
 
   lines.push(
     "",
     color.header("Token effect:"),
-    `  Removed description tokens: ${color.token(impact.removedTokens)} per future skill-catalog load`,
-    `  Potential new-chat savings: ${color.token(impact.removedTokens)} x ${color.info(impact.recentNewChats)} new ${plural(impact.recentNewChats, "chat")} in last ${impact.savingsDays} days = ${color.good(impact.potentialNewChatSavings)} tokens`,
-    `  Selected verified uses in last ${impact.savingsDays} days: ${color.info(impact.selectedRecentVerifiedUses)}`,
-    `  Observed selected-use prompt cost: ${color.token(impact.observedSelectedUseTokens)} tokens`,
-    `  Selected path mentions in window: ${color.dim(impact.selectedRecentPathMentions)} (not counted as verified use)`,
+    `  Removed description tokens: ${color.token(formatNumber(impact.removedTokens))} per future skill-catalog load`,
+    `  Potential new-chat savings: ${color.token(formatNumber(impact.removedTokens))} x ${color.info(formatNumber(impact.recentNewChats))} new ${plural(impact.recentNewChats, "chat")} in last ${formatNumber(impact.savingsDays)} days = ${color.good(formatNumber(impact.potentialNewChatSavings))} tokens`,
+    `  Selected verified uses in last ${formatNumber(impact.savingsDays)} days: ${color.info(formatNumber(impact.selectedRecentVerifiedUses))}`,
+    `  Observed selected-use prompt cost: ${color.token(formatNumber(impact.observedSelectedUseTokens))} tokens`,
+    `  Selected path mentions in window: ${color.dim(formatNumber(impact.selectedRecentPathMentions))} (not counted as verified use)`,
     "",
     deleteMode
       ? `${color.danger("Type DELETE then press Enter to permanently delete.")} ${color.dim("Press Esc to return to review.")}`

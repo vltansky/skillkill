@@ -8,6 +8,7 @@ import test from "node:test";
 import { main } from "../src/app.js";
 import { parseArgs } from "../src/args.js";
 import { formatCleanupResult } from "../src/cleanup-result.js";
+import { formatNumber } from "../src/format.js";
 import { renderInteractiveScreen, shouldRunInteractive } from "../src/interactive.js";
 import { buildRows } from "../src/model.js";
 import { loadOmitPatterns } from "../src/omit.js";
@@ -165,6 +166,11 @@ test("defaults to common installed skill roots and allows repeatable path overri
   const custom = parseArgs(["--path", "/tmp/one", "--path", "/tmp/two"]);
   assert.deepEqual(custom.skillsDirs, ["/tmp/one", "/tmp/two"]);
   assert.equal(custom.skillsDir, "/tmp/one");
+});
+
+test("formats human numbers with separators", () => {
+  assert.equal(formatNumber(11198), "11,198");
+  assert.equal(formatNumber(33594.5), "33,594.5");
 });
 
 test("builds rows from verified Codex and Claude evidence", async () => {
@@ -643,9 +649,9 @@ test("formats cleanup result with colors and token savings", () => {
           skill: "stale-skill",
           originalPath: "/tmp/skills/stale-skill",
           quarantinedPath: "/tmp/state/items/stale-skill",
-          descriptionTokenCost: 11,
+          descriptionTokenCost: 11198,
           recentStrongCount: 2,
-          recentWeakCount: 1,
+          recentWeakCount: 1000,
         },
       ],
     },
@@ -654,9 +660,10 @@ test("formats cleanup result with colors and token savings", () => {
 
   assert.match(output, /\x1b\[/);
   assert.match(output, /Done: Quarantined 1 skill/);
-  assert.match(output, /Saved per skill-catalog load: \x1b\[33m11\x1b\[0m description tokens/);
-  assert.match(output, /Potential new-chat savings: \x1b\[33m11\x1b\[0m x \x1b\[36m3\x1b\[0m new chats in last 30 days = \x1b\[1;32m33\x1b\[0m tokens/);
-  assert.match(output, /Observed selected-use prompt cost removed: \x1b\[33m22\x1b\[0m tokens/);
+  assert.match(output, /Saved per skill-catalog load: \x1b\[33m11,198\x1b\[0m description tokens/);
+  assert.match(output, /Potential new-chat savings: \x1b\[33m11,198\x1b\[0m x \x1b\[36m3\x1b\[0m new chats in last 30 days = \x1b\[1;32m33,594\x1b\[0m tokens/);
+  assert.match(output, /Observed selected-use prompt cost removed: \x1b\[33m22,396\x1b\[0m tokens/);
+  assert.match(output, /Path mentions in window: \x1b\[2m1,000\x1b\[0m/);
   assert.match(output, /Command: \x1b\[36mskillkill --undo \/tmp\/skillkill\/run\/manifest\.json\x1b\[0m/);
 });
 
@@ -740,7 +747,7 @@ test("renders interactive cleanup candidates", async () => {
   );
 
   assert.match(confirmScreen, /skillkill confirm cleanup/);
-  assert.match(confirmScreen, /You are going to remove 1 skills from active use/);
+  assert.match(confirmScreen, /You are going to remove 1 skill from active use/);
   assert.match(confirmScreen, /stale-skill/);
   assert.match(confirmScreen, /Removed description tokens: \d+ per future skill-catalog load/);
   assert.match(confirmScreen, /Potential new-chat savings: 11 x 2 new chats in last 30 days = 22 tokens/);
@@ -837,7 +844,7 @@ test("interactive e2e selects with enter and quarantines confirmed rows", async 
   press(stdin, "space", " ");
   press(stdin, "enter", "\r");
   await waitForOutput(stdout, /skillkill confirm cleanup/);
-  assert.match(stdout.output, /You are going to remove 1 skills from active use/);
+  assert.match(stdout.output, /You are going to remove 1 skill from active use/);
   assert.match(stdout.output, /Removed description tokens: 11 per future skill-catalog load/);
   assert.match(stdout.output, /Potential new-chat savings: 11 x 1 new chat in last 30 days = 11 tokens/);
   assert.match(stdout.output, /Observed selected-use prompt cost: 0 tokens/);

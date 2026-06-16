@@ -1,12 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
+import { formatNumber } from "./format.js";
 
 export function formatTable(rows, limit) {
   const columns = [
     ["skill", 30],
     ["risk", 9],
-    ["tokens", 6],
-    ["used_14d_tokens", 15],
+    ["tokens", 10],
+    ["used_14d_tokens", 18],
     ["last_verified_use", 19],
     ["last_any_signal", 19],
     ["verified", 8],
@@ -24,12 +25,12 @@ export function formatTable(rows, limit) {
     const values = [
       row.skill,
       row.risk,
-      String(row.description_token_cost),
-      String(row.used_14d_tokens),
+      formatNumber(row.description_token_cost),
+      formatNumber(row.used_14d_tokens),
       row.last_verified_use || "-",
       row.last_any_signal || "-",
-      String(row.verified_use_count),
-      String(row.path_mention_count),
+      formatNumber(row.verified_use_count),
+      formatNumber(row.path_mention_count),
       row.cleanup_candidate ? "yes" : "no",
       row.cleanup_reason || "-",
       row.path,
