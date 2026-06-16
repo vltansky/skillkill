@@ -4,7 +4,6 @@ import path from "node:path";
 export function formatTable(rows, limit) {
   const columns = [
     ["skill", 30],
-    ["status", 11],
     ["risk", 9],
     ["tokens", 6],
     ["last_strong_read", 19],
@@ -23,7 +22,6 @@ export function formatTable(rows, limit) {
   for (const row of rows.slice(0, limit)) {
     const values = [
       row.skill,
-      row.status,
       row.risk,
       String(row.description_token_cost),
       row.last_strong_read || "-",

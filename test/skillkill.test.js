@@ -187,7 +187,6 @@ test("builds rows from strong Codex and Claude evidence", async () => {
 
   const byName = new Map(rows.map((row) => [row.skill, row]));
   assert.equal(byName.get("stale-skill").cleanup_candidate, true);
-  assert.equal(byName.get("stale-skill").status, "ready");
   assert.equal(byName.get("stale-skill").risk, "low");
   assert.equal(byName.get("stale-skill").description_token_cost > 0, true);
   assert.equal(byName.get("stale-skill").recent_signal_count, 0);
@@ -195,19 +194,16 @@ test("builds rows from strong Codex and Claude evidence", async () => {
   assert.equal(byName.get("stale-skill").codex_strong_count, 1);
 
   assert.equal(byName.get("recent-skill").cleanup_candidate, false);
-  assert.equal(byName.get("recent-skill").status, "active");
   assert.equal(byName.get("recent-skill").recent_signal_count, 1);
   assert.equal(byName.get("recent-skill").claude_strong_count, 1);
 
   assert.equal(byName.get("weak-only").strong_count, 0);
   assert.equal(byName.get("weak-only").weak_path_refs, 1);
   assert.equal(byName.get("weak-only").cleanup_candidate, false);
-  assert.equal(byName.get("weak-only").status, "weak-signal");
   assert.equal(byName.get("weak-only").risk, "protected");
   assert.match(byName.get("weak-only").cleanup_reason, /recent weak signal/);
 
   assert.equal(byName.get(".system-skill").cleanup_candidate, false);
-  assert.equal(byName.get(".system-skill").status, "protected");
   assert.equal(rows[0].cleanup_candidate, true);
 });
 
@@ -515,7 +511,7 @@ test("direct omit command persists omit patterns", async () => {
   assert.match(fs.readFileSync(omitFile, "utf8"), /^ck-\*$/m);
 });
 
-test("direct list json includes status risk and token cost", async () => {
+test("direct list json includes risk and token cost without status", async () => {
   const fixture = makeFixture();
   let stdout = "";
 
@@ -549,7 +545,7 @@ test("direct list json includes status risk and token cost", async () => {
 
   const payload = JSON.parse(stdout);
   const stale = payload.rows.find((row) => row.skill === "stale-skill");
-  assert.equal(stale.status, "ready");
+  assert.equal("status" in stale, false);
   assert.equal(stale.risk, "low");
   assert.equal(stale.description.includes("fixture skill"), true);
   assert.equal(stale.description_token_cost > 0, true);
@@ -635,8 +631,9 @@ test("renders interactive cleanup candidates", async () => {
 
   assert.match(screen, /skillkill interactive cleanup/);
   assert.match(screen, /2 cleanup candidates/);
-  assert.match(screen, /status\s+risk\s+tokens/);
-  assert.match(screen, /\[x\] ready\s+low\s+\d+\s+stale-skill/);
+  assert.match(screen, /risk\s+tokens/);
+  assert.doesNotMatch(screen, /status/);
+  assert.match(screen, /\[x\] low\s+\d+\s+stale-skill/);
   assert.match(screen, /o omit/);
   assert.doesNotMatch(screen, /recent-skill/);
 
@@ -1119,7 +1116,7 @@ test("interactive undo restores a selected cleanup run", async () => {
   );
 
   await waitForOutput(stdout, /skillkill interactive undo/);
-  assert.match(stdout.output, /2\s+ready/);
+  assert.match(stdout.output, /2\s+available/);
   press(stdin, "enter", "\r");
   await waitForOutput(stdout, /! REVIEW RESTORE/);
   assert.match(stdout.output, /Press Enter to restore, Esc to return to review/);

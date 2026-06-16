@@ -64,17 +64,6 @@ function estimateDescriptionTokens(description) {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
-function statusFor({ cleanupCandidate, dotPrefixed, lastStrong, strongAgeDays, recentWeak, installedAgeDays }, options) {
-  if (cleanupCandidate) return "ready";
-  if (dotPrefixed) return "protected";
-  if (recentWeak) return "weak-signal";
-  if (lastStrong && strongAgeDays !== null && strongAgeDays <= options.unusedDays) return "active";
-  if (!lastStrong && installedAgeDays !== null && installedAgeDays < options.unusedInstalledDays) {
-    return "new";
-  }
-  return "kept";
-}
-
 function riskFor({ cleanupCandidate, cleanupReason, dotPrefixed, recentWeak }) {
   if (dotPrefixed || recentWeak) return "protected";
   if (!cleanupCandidate) return "none";
@@ -200,17 +189,6 @@ export function buildRows(skills, options) {
         cleanup_reason: cleanupReason,
         remove_command: `rm -rf ${shellQuote(path.dirname(usage.path))}`,
       };
-      row.status = statusFor(
-        {
-          cleanupCandidate,
-          dotPrefixed,
-          lastStrong,
-          strongAgeDays,
-          recentWeak,
-          installedAgeDays,
-        },
-        options,
-      );
       row.risk = riskFor({
         cleanupCandidate,
         cleanupReason,
@@ -222,7 +200,6 @@ export function buildRows(skills, options) {
       if (omitMatch) {
         return {
           ...row,
-          status: "omitted",
           risk: "protected",
           omitted: true,
           omit_pattern: omitMatch.pattern,

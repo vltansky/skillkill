@@ -20,7 +20,6 @@ function rowSearchText(row) {
     row.skill_dir,
     row.link_target,
     row.cleanup_reason,
-    row.status,
     row.risk,
     String(row.description_token_cost),
   ]
@@ -105,7 +104,6 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   );
   const end = Math.min(candidates.length, start + visible);
   const selectedVisible = candidates.filter((row) => selected.has(rowKey(row))).length;
-  const statusWidth = 9;
   const riskWidth = 9;
   const tokenWidth = 6;
   const nameWidth = Math.min(30, Math.max(18, Math.floor(width * 0.24)));
@@ -113,7 +111,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   const dateWidth = 19;
   const pathWidth = Math.max(
     14,
-    width - nameWidth - reasonWidth - dateWidth - statusWidth - riskWidth - tokenWidth - 21,
+    width - nameWidth - reasonWidth - dateWidth - riskWidth - tokenWidth - 21,
   );
   const search = String(state.search || "");
 
@@ -121,8 +119,8 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     "skillkill interactive cleanup",
     `${allCandidates.length} cleanup candidates, ${selectedVisible} selected${search ? `, ${candidates.length} visible for /${search}` : ""}${omitted.size ? `, ${omitted.size} omitted this run` : ""}${searchHidden ? `, ${searchHidden} hidden by search` : ""}${protectedHidden ? `, ${protectedHidden} protected/recent/omitted` : ""}`,
     "",
-    `   sel ${clip("status", statusWidth)} ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip("skill", nameWidth)} ${clip("reason", reasonWidth)} ${clip("last strong use", dateWidth)} ${clip("path", pathWidth)}`,
-    `   --- ${"-".repeat(statusWidth)} ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(pathWidth)}`,
+    `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip("skill", nameWidth)} ${clip("reason", reasonWidth)} ${clip("last strong use", dateWidth)} ${clip("path", pathWidth)}`,
+    `   --- ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(pathWidth)}`,
   ];
 
   if (state.searching || search) {
@@ -137,7 +135,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
       const active = index === cursor ? ">" : " ";
       const mark = selected.has(rowKey(row)) ? "[x]" : "[ ]";
       lines.push(
-        `${active} ${mark} ${clip(row.status, statusWidth)} ${clip(row.risk, riskWidth)} ${clip(row.description_token_cost, tokenWidth)} ${clip(row.skill, nameWidth)} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_strong_read || "-", dateWidth)} ${clip(row.path, pathWidth)}`,
+        `${active} ${mark} ${clip(row.risk, riskWidth)} ${clip(row.description_token_cost, tokenWidth)} ${clip(row.skill, nameWidth)} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_strong_read || "-", dateWidth)} ${clip(row.path, pathWidth)}`,
       );
     }
   }

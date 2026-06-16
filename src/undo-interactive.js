@@ -13,7 +13,7 @@ function clip(value, width) {
 }
 
 function runStatus(run) {
-  if (!run.restoredAt) return "ready";
+  if (!run.restoredAt) return "available";
   if (run.skipped.length > 0) return `restored, ${run.skipped.length} skipped`;
   return "restored";
 }
