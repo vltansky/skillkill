@@ -43,6 +43,22 @@ function allCandidateRows(rows, state = {}) {
   return rows.filter((row) => row.cleanup_candidate && !omitted.has(row.skill));
 }
 
+function selectedCandidateRows(rows, state = {}) {
+  const selected = state.selected || new Set();
+  return candidateRows(rows, state).filter((row) => selected.has(row.skill));
+}
+
+function tokenImpact(rows, picked, state = {}) {
+  const removedTokens = picked.reduce((sum, row) => sum + row.description_token_cost, 0);
+  const recentActivitySignals = rows.reduce((sum, row) => sum + row.recent_signal_count, 0);
+  return {
+    removedTokens,
+    recentActivitySignals,
+    savingsDays: state.savingsDays ?? 30,
+    estimatedRepeatedSavings: removedTokens * recentActivitySignals,
+  };
+}
+
 export function shouldRunInteractive(options, io = {}) {
   if (
     options.noInteractive ||
@@ -62,6 +78,10 @@ export function shouldRunInteractive(options, io = {}) {
 }
 
 export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
+  if (state.confirming) {
+    return renderConfirmationScreen(rows, state, dimensions);
+  }
+
   const allCandidates = allCandidateRows(rows, state);
   const candidates = candidateRows(rows, state);
   const total = rows.length;
@@ -116,17 +136,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     }
   }
 
-  if (state.confirming) {
-    const selectedRows = candidates.filter((row) => selected.has(row.skill));
-    lines.push(
-      "",
-      "! REVIEW CLEANUP",
-      `  ${selectedRows.length} selected skills will be moved to quarantine.`,
-      "  This is undoable with skillkill --undo.",
-      "  Press Enter to quarantine, Esc to return to review.",
-      state.message ? `  ${state.message}` : "",
-    );
-  } else if (state.message) {
+  if (state.message) {
     lines.push("", state.message);
   } else {
     lines.push("");
@@ -140,6 +150,51 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
         : "Keys: / search, up/down or j/k move, space/x select, a all, o omit, enter review, q quit",
   );
   lines.push("Use --no-interactive for the static table. Cleanup is quarantine-only and undoable.");
+  return `${lines.join("\n")}\n`;
+}
+
+function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
+  const picked = selectedCandidateRows(rows, state);
+  const height = Math.max(10, dimensions.rows || 24);
+  const width = Math.max(72, dimensions.columns || 100);
+  const visibleSkills = Math.max(1, height - 13);
+  const shown = picked.slice(0, visibleSkills);
+  const hidden = Math.max(0, picked.length - shown.length);
+  const impact = tokenImpact(rows, picked, state);
+  const skillWidth = Math.max(24, Math.min(48, Math.floor(width * 0.4)));
+  const reasonWidth = Math.max(20, width - skillWidth - 28);
+
+  const lines = [
+    "skillkill confirm cleanup",
+    "",
+    `You are going to remove ${picked.length} skills from active use and move them to quarantine.`,
+    "This is undoable with skillkill --undo.",
+    "",
+    "Selected skills:",
+  ];
+
+  if (picked.length === 0) {
+    lines.push("  No selected cleanup candidates.");
+  } else {
+    for (const row of shown) {
+      lines.push(
+        `  - ${clip(row.skill, skillWidth)} ${clip(`${row.description_token_cost} tokens`, 12)} ${clip(row.cleanup_reason, reasonWidth)}`,
+      );
+    }
+    if (hidden) lines.push(`  ... and ${hidden} more`);
+  }
+
+  lines.push(
+    "",
+    "Token effect:",
+    `  Removed description tokens: ${impact.removedTokens}`,
+    `  Recent activity baseline: ${impact.recentActivitySignals} signals/sessions in last ${impact.savingsDays} days`,
+    `  Estimated repeated prompt savings: ${impact.estimatedRepeatedSavings} tokens`,
+    "",
+    "Press Enter to quarantine. Press Esc to return to review.",
+    state.message ? state.message : "",
+    "Confirm: enter quarantine, esc review",
+  );
   return `${lines.join("\n")}\n`;
 }
 
@@ -196,6 +251,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
     confirming: false,
     searching: false,
     search: "",
+    savingsDays: options.savingsDays ?? 30,
     message: "",
   };
   const wasRaw = stdin.isRaw;
@@ -232,7 +288,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
     }
 
     function selectedRows() {
-      return candidateRows(rows, state).filter((row) => state.selected.has(row.skill));
+      return selectedCandidateRows(rows, state);
     }
 
     function clampCursor() {

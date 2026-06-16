@@ -165,11 +165,13 @@ test("builds rows from strong Codex and Claude evidence", async () => {
   assert.equal(byName.get("stale-skill").status, "ready");
   assert.equal(byName.get("stale-skill").risk, "low");
   assert.equal(byName.get("stale-skill").description_token_cost > 0, true);
+  assert.equal(byName.get("stale-skill").recent_signal_count, 0);
   assert.match(byName.get("stale-skill").cleanup_reason, /last strong use/);
   assert.equal(byName.get("stale-skill").codex_strong_count, 1);
 
   assert.equal(byName.get("recent-skill").cleanup_candidate, false);
   assert.equal(byName.get("recent-skill").status, "active");
+  assert.equal(byName.get("recent-skill").recent_signal_count, 1);
   assert.equal(byName.get("recent-skill").claude_strong_count, 1);
 
   assert.equal(byName.get("weak-only").strong_count, 0);
@@ -468,6 +470,8 @@ test("direct list json includes status risk and token cost", async () => {
   assert.equal(stale.description.includes("fixture skill"), true);
   assert.equal(stale.description_token_cost > 0, true);
   assert.equal(payload.summary.descriptionTokenCost > 0, true);
+  assert.equal(payload.savingsDays, 30);
+  assert.equal(payload.summary.recentActivitySignals, 2);
 });
 
 test("direct cleanup apply and undo latest commands work", async () => {
@@ -571,6 +575,26 @@ test("renders interactive cleanup candidates", async () => {
   assert.match(searchScreen, /Search: \/never/);
   assert.match(searchScreen, /never-used/);
   assert.doesNotMatch(searchScreen, /stale-skill/);
+
+  const confirmScreen = renderInteractiveScreen(
+    rows,
+    {
+      cursor: 0,
+      selected: new Set(["stale-skill"]),
+      omitted: new Set(),
+      confirming: true,
+      savingsDays: 30,
+    },
+    { columns: 120, rows: 24 },
+  );
+
+  assert.match(confirmScreen, /skillkill confirm cleanup/);
+  assert.match(confirmScreen, /You are going to remove 1 skills from active use/);
+  assert.match(confirmScreen, /stale-skill/);
+  assert.match(confirmScreen, /Removed description tokens: \d+/);
+  assert.match(confirmScreen, /Recent activity baseline: 2 signals\/sessions in last 30 days/);
+  assert.match(confirmScreen, /Estimated repeated prompt savings: \d+ tokens/);
+  assert.match(confirmScreen, /Press Enter to quarantine/);
 });
 
 test("interactive mode defaults only for real terminals", () => {
@@ -639,8 +663,9 @@ test("interactive e2e selects with enter and quarantines confirmed rows", async 
   await waitForOutput(stdout, /skillkill interactive cleanup/);
   press(stdin, "space", " ");
   press(stdin, "enter", "\r");
-  await waitForOutput(stdout, /! REVIEW CLEANUP/);
-  assert.match(stdout.output, /Press Enter to quarantine, Esc to return to review/);
+  await waitForOutput(stdout, /skillkill confirm cleanup/);
+  assert.match(stdout.output, /You are going to remove 1 skills from active use/);
+  assert.match(stdout.output, /Estimated repeated prompt savings:/);
   press(stdin, "down");
   await waitForOutput(stdout, /Press Enter to quarantine or Esc to review/);
   press(stdin, "enter", "\r");
@@ -695,7 +720,7 @@ test("interactive e2e filters with slash search before cleanup", async () => {
   press(stdin, "enter", "\r");
   press(stdin, "space", " ");
   press(stdin, "enter", "\r");
-  await waitForOutput(stdout, /! REVIEW CLEANUP/);
+  await waitForOutput(stdout, /skillkill confirm cleanup/);
   press(stdin, "enter", "\r");
 
   const result = await run;

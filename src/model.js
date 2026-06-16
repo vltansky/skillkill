@@ -54,6 +54,10 @@ function latest(items) {
   return new Date(Math.max(...dates.map((date) => date.getTime())));
 }
 
+function recent(items, now, days) {
+  return items.filter((item) => item.ts && ageDays(item.ts, now) <= days);
+}
+
 function estimateDescriptionTokens(description) {
   const text = String(description || "").trim();
   if (!text) return 0;
@@ -91,11 +95,14 @@ export function ageDays(value, now = new Date()) {
 export function buildRows(skills, options) {
   const now = options.now || new Date();
   const protectWeakDays = options.protectWeakDays ?? options.unusedDays;
+  const savingsDays = options.savingsDays ?? 30;
   return [...skills.values()]
     .map((usage) => {
       const lastStrong = latest(usage.strong);
       const lastWeak = latest(usage.weak);
       const lastSignal = latest([...usage.strong, ...usage.weak]);
+      const recentStrongSignals = recent(usage.strong, now, savingsDays);
+      const recentWeakSignals = recent(usage.weak, now, savingsDays);
       const codexStrongCount = usage.strong.filter((item) =>
         item.kind.startsWith("codex_"),
       ).length;
@@ -169,6 +176,9 @@ export function buildRows(skills, options) {
         last_strong_read: formatDate(lastStrong),
         strong_age_days: strongAgeDays,
         weak_path_refs: usage.weak.length,
+        recent_strong_count: recentStrongSignals.length,
+        recent_weak_count: recentWeakSignals.length,
+        recent_signal_count: recentStrongSignals.length + recentWeakSignals.length,
         opencode_weak_count: opencodeWeakCount,
         cursor_weak_count: cursorWeakCount,
         filesystem_weak_count: filesystemWeakCount,
@@ -253,6 +263,7 @@ export function payloadFor(rows, options, scanStats, now = new Date()) {
     generatedAt: now.toISOString(),
     unusedDays: options.unusedDays,
     unusedInstalledDays: options.unusedInstalledDays,
+    savingsDays: options.savingsDays ?? 30,
     source: options.source,
     summary: {
       total: rows.length,
@@ -283,6 +294,7 @@ export function payloadFor(rows, options, scanStats, now = new Date()) {
         (sum, row) => sum + row.description_token_cost,
         0,
       ),
+      recentActivitySignals: rows.reduce((sum, row) => sum + row.recent_signal_count, 0),
       scanMs: scanStats.elapsedMs,
       matchedLines: scanBuckets.reduce((sum, bucket) => sum + bucket.matchedLines, 0),
       parsedRecords: scanBuckets.reduce((sum, bucket) => sum + bucket.parsedRecords, 0),

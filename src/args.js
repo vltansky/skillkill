@@ -15,6 +15,7 @@ export const DEFAULT_OPTIONS = {
   unusedDays: 45,
   unusedInstalledDays: 7,
   protectWeakDays: 45,
+  savingsDays: 30,
   limit: 40,
   fullScan: false,
   json: false,
@@ -85,6 +86,7 @@ Options:
   --unused-days N                 Mark skills stale after N days (default: 45)
   --unused-installed-days N       Propose never-used skills older than N days (default: 7)
   --protect-weak-days N           Defer cleanup after recent weak evidence (default: 45)
+  --savings-days N                Estimate token effect from recent activity (default: 30)
   --limit N                       Table row limit (default: 40)
   --commands                      Print all candidate rm commands
   --json                          Print JSON payload to stdout
@@ -161,6 +163,9 @@ export function parseArgs(argv) {
       i += 1;
     } else if (arg === "--protect-weak-days") {
       options.protectWeakDays = readNumber(argv, i, arg);
+      i += 1;
+    } else if (arg === "--savings-days") {
+      options.savingsDays = readNumber(argv, i, arg);
       i += 1;
     } else if (arg === "--limit") {
       options.limit = readNumber(argv, i, arg);

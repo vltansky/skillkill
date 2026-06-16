@@ -106,6 +106,11 @@ Rows include `status`, `risk`, and `description_token_cost`. The token cost is a
 rough estimate from the skill `description` frontmatter field, useful for
 spotting bulky skill menus before removing anything.
 
+The interactive confirmation screen shows the selected skills, description
+tokens removed, and an estimated repeated prompt saving. That estimate multiplies
+removed description tokens by recent skill activity signals/sessions from the
+last `--savings-days` window.
+
 ## Interactive Keys
 
 | Key | Action |
@@ -133,6 +138,7 @@ Interactive omit appends the skill name to `~/.config/skillkill/omit` unless
 | `--unused-days N` | Mark skills stale after last strong use |
 | `--unused-installed-days N` | Propose never-used skills after install age |
 | `--protect-weak-days N` | Defer cleanup after recent weak evidence |
+| `--savings-days N` | Estimate token savings from recent activity |
 | `--omit PATTERN`, `--whitelist PATTERN` | Keep matching skills out of cleanup candidates |
 | `skillkill omit PATTERN` | Persist an omit pattern |
 | `--no-interactive` | Print the static table |

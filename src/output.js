@@ -92,6 +92,7 @@ export function writeSnapshot(file, payload, options) {
         source: options.source,
         unusedDays: options.unusedDays,
         unusedInstalledDays: options.unusedInstalledDays,
+        savingsDays: options.savingsDays,
       },
       rows: payload.rows,
     })}\n`,
