@@ -1,4 +1,5 @@
 import { INTERACTIVE_UNDO, parseArgs, printHelp } from "./args.js";
+import { formatCleanupResult } from "./cleanup-result.js";
 import { buildRows, payloadFor } from "./model.js";
 import { collectSkills, scanEvidence } from "./scan.js";
 import { formatCommands, formatTable, writeCsv, writeSnapshot } from "./output.js";
@@ -88,17 +89,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
 
   if (options.apply) {
     const result = quarantineCandidates(rows, { ...options, now });
-    if (result.count === 0) {
-      write(stdout, "No cleanup candidates.\n");
-    } else {
-      write(stdout, `Applying cleanup to ${result.count} candidates.\n`);
-      write(stdout, `Undo manifest: ${result.manifest}\n`);
-      for (const entry of result.entries) {
-        write(stdout, `moved ${entry.originalPath} -> ${entry.quarantinedPath}\n`);
-      }
-      printVercelLockResult(stdout, result.vercelLocks, "update");
-      write(stdout, `Undo with: skillkill --undo ${result.manifest}\n`);
-    }
+    write(stdout, formatCleanupResult(result, { stdout, savingsDays: options.savingsDays }));
   } else if (options.commands) {
     write(stdout, formatCommands(rows));
   } else if (options.json) {

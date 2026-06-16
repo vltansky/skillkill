@@ -1,7 +1,8 @@
 import readline from "node:readline";
 import { colors, shouldUseColor } from "./ansi.js";
+import { formatCleanupResult } from "./cleanup-result.js";
 import { appendOmitPattern } from "./omit.js";
-import { quarantineCandidates } from "./quarantine.js";
+import { deleteCandidates, quarantineCandidates } from "./quarantine.js";
 
 function write(stream, text) {
   stream.write(text);
@@ -180,6 +181,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
 function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
   const color = colors(Boolean(dimensions.colors));
   const picked = selectedCandidateRows(rows, state);
+  const deleteMode = Boolean(state.deleteMode);
   const height = Math.max(10, dimensions.rows || 24);
   const width = Math.max(72, dimensions.columns || 100);
   const visibleSkills = Math.max(1, height - 13);
@@ -190,10 +192,14 @@ function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
   const reasonWidth = Math.max(20, width - skillWidth - 28);
 
   const lines = [
-    color.warn("skillkill confirm cleanup"),
+    color.warn(deleteMode ? "skillkill confirm permanent delete" : "skillkill confirm cleanup"),
     "",
-    color.danger(`You are going to remove ${picked.length} skills from active use and move them to quarantine.`),
-    color.dim("This is undoable with skillkill --undo."),
+    deleteMode
+      ? color.danger(`You are going to permanently delete ${picked.length} skills from active use.`)
+      : color.danger(`You are going to remove ${picked.length} skills from active use and move them to quarantine.`),
+    deleteMode
+      ? color.danger("This does not write an undo manifest.")
+      : color.dim("This is undoable with skillkill --undo."),
     "",
     color.header("Selected skills:"),
   ];
@@ -217,9 +223,14 @@ function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
     `  Observed selected-use prompt cost: ${color.token(impact.observedSelectedUseTokens)} tokens`,
     `  Selected path mentions in window: ${color.dim(impact.selectedRecentPathMentions)} (not counted as verified use)`,
     "",
-    `${color.good("Press Enter to quarantine.")} ${color.dim("Press Esc to return to review.")}`,
+    deleteMode
+      ? `${color.danger("Type DELETE then press Enter to permanently delete.")} ${color.dim("Press Esc to return to review.")}`
+      : `${color.good("Press Enter to quarantine.")} ${color.warn("Press d for permanent delete.")} ${color.dim("Press Esc to return to review.")}`,
+    deleteMode ? `  DELETE confirmation: ${color.warn(state.deleteConfirm || "")}` : "",
     state.message ? color.warn(state.message) : "",
-    color.warn("Confirm: enter quarantine, esc review"),
+    deleteMode
+      ? color.danger("Confirm: type DELETE, enter delete, esc review")
+      : color.warn("Confirm: enter quarantine, d delete permanently, esc review"),
   );
   return `${lines.join("\n")}\n`;
 }
@@ -236,23 +247,8 @@ function render(stdout, rows, state) {
   );
 }
 
-function printResult(stdout, result) {
-  if (result.count === 0) {
-    write(stdout, "No selected cleanup candidates.\n");
-    return;
-  }
-  write(stdout, `Quarantined ${result.count} skills.\n`);
-  write(stdout, `Undo manifest: ${result.manifest}\n`);
-  for (const entry of result.entries) {
-    write(stdout, `moved ${entry.originalPath} -> ${entry.quarantinedPath}\n`);
-  }
-  if (result.vercelLocks?.removed?.length) {
-    write(stdout, `Vercel skills lock: removed ${result.vercelLocks.removed.length} entries.\n`);
-  }
-  for (const error of result.vercelLocks?.errors || []) {
-    write(stdout, `warning: could not update Vercel skills lock ${error.lockPath}: ${error.error}\n`);
-  }
-  write(stdout, `Undo with: skillkill --undo ${result.manifest}\n`);
+function printResult(stdout, result, options) {
+  write(stdout, formatCleanupResult(result, { stdout, savingsDays: options.savingsDays }));
 }
 
 export async function runInteractive(rows, payload, options, io = {}) {
@@ -278,6 +274,8 @@ export async function runInteractive(rows, payload, options, io = {}) {
     confirming: false,
     searching: false,
     search: "",
+    deleteMode: false,
+    deleteConfirm: "",
     savingsDays: options.savingsDays ?? 30,
     message: "",
   };
@@ -364,12 +362,21 @@ export async function runInteractive(rows, payload, options, io = {}) {
         : `Omitted ${row.skill} for this run.`;
     }
 
-    function applySelected() {
+    function quarantineSelected() {
       const picked = selectedRows();
       const result = quarantineCandidates(picked, options);
       finished = true;
       cleanup();
-      printResult(stdout, result);
+      printResult(stdout, result, options);
+      resolve({ payload, interactive: true, cleanup: result });
+    }
+
+    function deleteSelected() {
+      const picked = selectedRows();
+      const result = deleteCandidates(picked, options);
+      finished = true;
+      cleanup();
+      printResult(stdout, result, options);
       resolve({ payload, interactive: true, cleanup: result });
     }
 
@@ -381,17 +388,61 @@ export async function runInteractive(rows, payload, options, io = {}) {
         }
 
         if (state.confirming) {
+          if (state.deleteMode) {
+            if (key.name === "n" || key.name === "escape" || key.name === "q") {
+              state.confirming = false;
+              state.deleteMode = false;
+              state.deleteConfirm = "";
+              state.message = "Cancelled.";
+              render(stdout, rows, state);
+              return;
+            }
+            if (key.name === "backspace" || key.name === "delete") {
+              state.deleteConfirm = String(state.deleteConfirm || "").slice(0, -1);
+              state.message = "";
+              render(stdout, rows, state);
+              return;
+            }
+            if (key.name === "return" || key.name === "enter") {
+              if (String(state.deleteConfirm || "").toLowerCase() === "delete") {
+                deleteSelected();
+                return;
+              }
+              state.message = "Type DELETE to permanently delete or Esc to review.";
+              render(stdout, rows, state);
+              return;
+            }
+            if (_str && _str.length === 1 && !key.ctrl && !key.meta) {
+              state.deleteConfirm = `${state.deleteConfirm || ""}${_str}`;
+              state.message = "";
+              render(stdout, rows, state);
+              return;
+            }
+            state.message = "Type DELETE to permanently delete or Esc to review.";
+            render(stdout, rows, state);
+            return;
+          }
+
           if (key.name === "return" || key.name === "enter" || key.name === "y") {
-            applySelected();
+            quarantineSelected();
+            return;
+          }
+          if (_str === "d" || key.name === "d") {
+            state.deleteMode = true;
+            state.deleteConfirm = "";
+            state.message = "";
+            render(stdout, rows, state);
             return;
           }
           if (key.name === "n" || key.name === "escape" || key.name === "q") {
             state.confirming = false;
+            state.deleteMode = false;
+            state.deleteConfirm = "";
             state.message = "Cancelled.";
             render(stdout, rows, state);
             return;
           }
-          state.message = "Press Enter to quarantine or Esc to review.";
+          state.message = "Press Enter to quarantine, d to delete permanently, or Esc to review.";
           render(stdout, rows, state);
           return;
         }
@@ -443,6 +494,8 @@ export async function runInteractive(rows, payload, options, io = {}) {
             state.message = "Select at least one skill first.";
           } else {
             state.confirming = true;
+            state.deleteMode = false;
+            state.deleteConfirm = "";
             state.message = "";
           }
         }

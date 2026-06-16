@@ -51,8 +51,11 @@ native attribution.
 - Default runs do not move files.
 - Interactive cleanup requires selecting rows, pressing `enter` to review, then
   pressing `enter` again to move them to quarantine.
+- From the review screen, pressing `d`, typing `DELETE`, then pressing `enter`
+  permanently deletes the selected skills instead of quarantining them.
 - `--apply` moves candidates into `~/.local/state/skillkill/runs/...`; it does
   not permanently delete them.
+- Permanent delete does not write an undo manifest.
 - If a quarantined skill is tracked by `npx skills`, matching Vercel lock
   entries are removed from `~/.agents/.skill-lock.json`,
   `$XDG_STATE_HOME/skills/.skill-lock.json`, or an existing project
@@ -129,6 +132,7 @@ sessions.
 | `a` | Toggle all cleanup candidates |
 | `o` | Omit the current skill |
 | `enter` | Open review, keep search, or confirm cleanup/restore |
+| `d` | Enter permanent-delete mode from cleanup review |
 | `y` | Confirm cleanup or restore shortcut |
 | `n` / `esc` | Cancel confirmation |
 | `q` | Quit |

@@ -38,6 +38,18 @@ function pathExistsOrSymlink(file) {
   }
 }
 
+function cleanupEntry(row, extra = {}) {
+  return {
+    skill: row.skill,
+    reason: row.cleanup_reason,
+    originalPath: row.skill_dir,
+    descriptionTokenCost: row.description_token_cost,
+    recentStrongCount: row.recent_strong_count,
+    recentWeakCount: row.recent_weak_count,
+    ...extra,
+  };
+}
+
 export function listCleanupRuns(stateDir) {
   const runsDir = path.join(stateDir, "runs");
   if (!fs.existsSync(runsDir)) return [];
@@ -90,7 +102,7 @@ export function resolveUndoManifest(stateDir, undoTarget) {
 export function quarantineCandidates(rows, options) {
   const candidates = rows.filter((row) => row.cleanup_candidate);
   if (candidates.length === 0) {
-    return { count: 0, manifest: "", entries: [] };
+    return { mode: "quarantine", count: 0, manifest: "", entries: [] };
   }
 
   const runDir = uniqueRunDir(options.stateDir, options.now);
@@ -105,12 +117,11 @@ export function quarantineCandidates(rows, options) {
     );
     if (!pathExistsOrSymlink(row.skill_dir)) continue;
     fs.renameSync(row.skill_dir, itemDir);
-    entries.push({
-      skill: row.skill,
-      reason: row.cleanup_reason,
-      originalPath: row.skill_dir,
-      quarantinedPath: itemDir,
-    });
+    entries.push(
+      cleanupEntry(row, {
+        quarantinedPath: itemDir,
+      }),
+    );
   }
 
   const vercelLocks = removeSkillsFromVercelLocks(
@@ -135,8 +146,39 @@ export function quarantineCandidates(rows, options) {
   });
 
   return {
+    mode: "quarantine",
     count: entries.length,
     manifest: manifestPath(runDir),
+    entries,
+    vercelLocks: {
+      removed: vercelLocks.removed,
+      errors: vercelLocks.errors,
+    },
+  };
+}
+
+export function deleteCandidates(rows, options) {
+  const candidates = rows.filter((row) => row.cleanup_candidate);
+  if (candidates.length === 0) {
+    return { mode: "delete", count: 0, manifest: "", entries: [] };
+  }
+
+  const entries = [];
+  for (const row of candidates) {
+    if (!pathExistsOrSymlink(row.skill_dir)) continue;
+    fs.rmSync(row.skill_dir, { recursive: true, force: false });
+    entries.push(cleanupEntry(row, { deletedPath: row.skill_dir }));
+  }
+
+  const vercelLocks = removeSkillsFromVercelLocks(
+    entries.map((entry) => entry.skill),
+    options,
+  );
+
+  return {
+    mode: "delete",
+    count: entries.length,
+    manifest: "",
     entries,
     vercelLocks: {
       removed: vercelLocks.removed,
