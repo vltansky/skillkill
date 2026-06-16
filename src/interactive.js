@@ -272,7 +272,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
         else if (key.name === "space" || key.name === "x") toggleCurrent();
         else if (key.name === "a") toggleAll();
         else if (key.name === "o") omitCurrent();
-        else if (key.name === "return") {
+        else if (key.name === "return" || key.name === "enter") {
           if (state.selected.size === 0) {
             state.message = "Select at least one skill first.";
           } else {

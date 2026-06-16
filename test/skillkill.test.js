@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +13,50 @@ import { collectSkills, scanEvidence } from "../src/scan.js";
 import { formatCommands } from "../src/output.js";
 
 const NOW = new Date("2026-06-15T00:00:00Z");
+
+class FakeStdin extends EventEmitter {
+  isTTY = true;
+  isRaw = false;
+  resumed = false;
+  paused = false;
+
+  setRawMode(value) {
+    this.isRaw = value;
+  }
+
+  resume() {
+    this.resumed = true;
+  }
+
+  pause() {
+    this.paused = true;
+  }
+}
+
+class FakeStdout {
+  isTTY = true;
+  columns = 120;
+  rows = 24;
+  output = "";
+
+  write(chunk) {
+    this.output += chunk;
+  }
+}
+
+function press(stdin, name, value = name) {
+  stdin.emit("keypress", value, { name });
+}
+
+async function waitForOutput(stdout, pattern) {
+  const deadline = Date.now() + 1000;
+  while (!pattern.test(stdout.output)) {
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for output: ${pattern}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
 
 function makeFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillkill-test-"));
@@ -412,6 +457,92 @@ test("interactive mode defaults only for real terminals", () => {
     }),
     false,
   );
+});
+
+test("interactive e2e selects with enter and quarantines confirmed rows", async () => {
+  const fixture = makeFixture();
+  const stdin = new FakeStdin();
+  const stdout = new FakeStdout();
+  const run = main(
+    [
+      "--path",
+      fixture.skillsDir,
+      "--codex-dir",
+      fixture.codexDir,
+      "--claude-dir",
+      fixture.claudeDir,
+      "--claude-app-dir",
+      fixture.claudeAppDir,
+      "--opencode-dir",
+      fixture.opencodeDir,
+      "--cursor-dir",
+      fixture.cursorDir,
+      "--unused-installed-days",
+      "0",
+      "--state-dir",
+      fixture.stateDir,
+      "--full-scan",
+      "--no-omit-file",
+    ],
+    { now: NOW, stdin, stdout, stderr: { write: () => {} } },
+  );
+
+  await waitForOutput(stdout, /skillkill interactive cleanup/);
+  press(stdin, "space", " ");
+  press(stdin, "enter", "\r");
+  await waitForOutput(stdout, /Quarantine 1 selected skills/);
+  press(stdin, "y");
+
+  const result = await run;
+  assert.equal(result.cleanup.count, 1);
+  assert.equal(result.cleanup.entries[0].skill, "stale-skill");
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), false);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), true);
+  assert.match(stdout.output, /Quarantined 1 skills/);
+  assert.equal(stdin.paused, true);
+  assert.equal(stdin.isRaw, false);
+});
+
+test("interactive e2e omits current row and persists omit pattern", async () => {
+  const fixture = makeFixture();
+  const stdin = new FakeStdin();
+  const stdout = new FakeStdout();
+  const omitFile = path.join(fixture.root, "interactive-omit.txt");
+  const run = main(
+    [
+      "--path",
+      fixture.skillsDir,
+      "--codex-dir",
+      fixture.codexDir,
+      "--claude-dir",
+      fixture.claudeDir,
+      "--claude-app-dir",
+      fixture.claudeAppDir,
+      "--opencode-dir",
+      fixture.opencodeDir,
+      "--cursor-dir",
+      fixture.cursorDir,
+      "--unused-installed-days",
+      "0",
+      "--state-dir",
+      fixture.stateDir,
+      "--omit-file",
+      omitFile,
+      "--full-scan",
+    ],
+    { now: NOW, stdin, stdout, stderr: { write: () => {} } },
+  );
+
+  await waitForOutput(stdout, /skillkill interactive cleanup/);
+  press(stdin, "o");
+  await waitForOutput(stdout, /Omitted stale-skill/);
+  press(stdin, "q");
+
+  const result = await run;
+  assert.equal(result.cancelled, true);
+  assert.match(fs.readFileSync(omitFile, "utf8"), /^stale-skill$/m);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), true);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), true);
 });
 
 test("apply quarantines candidates and undo restores them", async () => {
