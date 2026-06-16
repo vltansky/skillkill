@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { formatDateMinute, formatDateOnly, formatNumber, hyperlink } from "./format.js";
+import { renderLogo } from "./logo.js";
 
 function clipped(value, width) {
   const text = String(value || "");
@@ -49,6 +50,8 @@ export function formatTable(rows, limit, options = {}) {
     ["path", 0],
   ];
   const lines = [
+    renderLogo(),
+    "",
     columns.map(([name, width]) => name.padEnd(width || name.length)).join(" | "),
     columns.map(([, width]) => "-".repeat(width || 48)).join("-+-"),
   ];

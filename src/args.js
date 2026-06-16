@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import { renderLogo } from "./logo.js";
 
 export const DEFAULT_SKILLS_DIRS = [
   "~/.agents/skills",
@@ -72,7 +73,9 @@ function readNumber(argv, index, arg) {
 }
 
 export function printHelp() {
-  return `Usage: skillkill [command] [options]
+  return `${renderLogo()}
+
+Usage: skillkill [command] [options]
 
 Commands:
   list                           Scan skills and print the normal report

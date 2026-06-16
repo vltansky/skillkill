@@ -1,5 +1,7 @@
 # skillkill
 
+![skillkill token-cost receipt logo](assets/skillkill-token-receipt.png)
+
 Audit local agent skills, find stale or never-used installs, and clean them up
 through an undoable quarantine.
 

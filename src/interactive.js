@@ -8,6 +8,7 @@ import {
   hyperlink,
   shouldUseLinks,
 } from "./format.js";
+import { renderLogo } from "./logo.js";
 import { appendOmitPattern } from "./omit.js";
 import { deleteCandidates, quarantineCandidates } from "./quarantine.js";
 
@@ -163,7 +164,8 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   const links = Boolean(dimensions.links);
 
   const lines = [
-    color.title("skillkill interactive cleanup"),
+    renderLogo({ color: color.title }),
+    color.dim("interactive cleanup"),
     color.dim(
       `${formatNumber(allCandidates.length)} cleanup candidates, ${formatNumber(selectedVisible)} selected${search ? `, ${formatNumber(candidates.length)} visible for /${search}` : ""}${omitted.size ? `, ${formatNumber(omitted.size)} omitted this run` : ""}${searchHidden ? `, ${formatNumber(searchHidden)} hidden by search` : ""}${protectedHidden ? `, ${formatNumber(protectedHidden)} protected/recent/omitted` : ""}`,
     ),

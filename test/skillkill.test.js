@@ -15,6 +15,7 @@ import { loadOmitPatterns } from "../src/omit.js";
 import { collectSkills, scanEvidence } from "../src/scan.js";
 import { renderInteractiveUndoScreen } from "../src/undo-interactive.js";
 import { formatCommands, formatTable } from "../src/output.js";
+import { renderLogo } from "../src/logo.js";
 
 const NOW = new Date("2026-06-15T00:00:00Z");
 
@@ -412,6 +413,8 @@ test("formats cleanup commands for candidates only", async () => {
   assert.doesNotMatch(commands, /\.system-skill/);
 
   const table = formatTable(rows, 5, { recentNewChats: 2 });
+  assert.match(table, /###### ##  ## #### ##     ##/);
+  assert.doesNotMatch(table, /stale skill cleanup, with receipts/);
   assert.match(table, /30d burn/);
   assert.match(table, /30d burn = description tokens multiplied by 2 new chats/);
   assert.match(table, /last_verified_use/);
@@ -421,6 +424,20 @@ test("formats cleanup commands for candidates only", async () => {
 
   const linkedTable = formatTable(rows, 5, { links: true, recentNewChats: 2, savingsDays: 30 });
   assert.match(linkedTable, /\x1b]8;;file:\/\//);
+});
+
+test("renders the ascii logo", () => {
+  assert.equal(
+    renderLogo(),
+    [
+      "###### ##  ## #### ##     ##     ##  ## #### ##     ##",
+      "##     ## ##   ##  ##     ##     ## ##   ##  ##     ##",
+      "###### ####    ##  ##     ##     ####    ##  ##     ##",
+      "    ## ## ##   ##  ##     ##     ## ##   ##  ##     ##",
+      "###### ##  ## #### ###### ###### ##  ## #### ###### ######",
+      "  ....   ..     ..     ..     ..   ..     ..     ..     ..",
+    ].join("\n"),
+  );
 });
 
 test("omits cleanup candidates from cli patterns and omit files", async () => {
@@ -709,7 +726,9 @@ test("renders interactive cleanup candidates", async () => {
     { columns: 120, rows: 24 },
   );
 
-  assert.match(screen, /skillkill interactive cleanup/);
+  assert.match(screen, /###### ##  ## #### ##     ##/);
+  assert.doesNotMatch(screen, /stale skill cleanup, with receipts/);
+  assert.match(screen, /interactive cleanup/);
   assert.match(screen, /2 cleanup candidates/);
   assert.match(screen, /risk\s+tokens\s+30d burn\s+skill\s+cleanup reason\s+last verified use\s+installed/);
   assert.doesNotMatch(screen, /\x1b\[/);
@@ -728,7 +747,7 @@ test("renders interactive cleanup candidates", async () => {
   );
 
   assert.match(colorScreen, /\x1b\[/);
-  assert.match(colorScreen, /\x1b\[1;36mskillkill interactive cleanup\x1b\[0m/);
+  assert.match(colorScreen, /\x1b\[1;36m###### ##  ## #### ##     ##/);
 
   const linkedScreen = renderInteractiveScreen(
     rows,
@@ -866,7 +885,7 @@ test("interactive e2e selects with enter and quarantines confirmed rows", async 
     { now: NOW, stdin, stdout, stderr: { write: () => {} } },
   );
 
-  await waitForOutput(stdout, /skillkill interactive cleanup/);
+  await waitForOutput(stdout, /###### ##  ## #### ##     ##/);
   press(stdin, "space", " ");
   press(stdin, "enter", "\r");
   await waitForOutput(stdout, /skillkill confirm cleanup/);
@@ -916,7 +935,7 @@ test("interactive e2e permanently deletes only after typed confirmation", async 
     { now: NOW, stdin, stdout, stderr: { write: () => {} } },
   );
 
-  await waitForOutput(stdout, /skillkill interactive cleanup/);
+  await waitForOutput(stdout, /###### ##  ## #### ##     ##/);
   press(stdin, "space", " ");
   press(stdin, "enter", "\r");
   await waitForOutput(stdout, /skillkill confirm cleanup/);
@@ -968,7 +987,7 @@ test("interactive e2e filters with slash search before cleanup", async () => {
     { now: NOW, stdin, stdout, stderr: { write: () => {} } },
   );
 
-  await waitForOutput(stdout, /skillkill interactive cleanup/);
+  await waitForOutput(stdout, /###### ##  ## #### ##     ##/);
   press(stdin, "slash", "/");
   await waitForOutput(stdout, /Search: \/_/);
   press(stdin, "n", "n");
@@ -1020,7 +1039,7 @@ test("interactive e2e omits current row and persists omit pattern", async () => 
     { now: NOW, stdin, stdout, stderr: { write: () => {} } },
   );
 
-  await waitForOutput(stdout, /skillkill interactive cleanup/);
+  await waitForOutput(stdout, /###### ##  ## #### ##     ##/);
   press(stdin, "o");
   await waitForOutput(stdout, /Omitted stale-skill/);
   press(stdin, "q");
