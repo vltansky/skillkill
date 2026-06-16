@@ -67,7 +67,7 @@ function estimateDescriptionTokens(description) {
 function riskFor({ cleanupCandidate, cleanupReason, dotPrefixed, recentWeak }) {
   if (dotPrefixed || recentWeak) return "protected";
   if (!cleanupCandidate) return "none";
-  if (cleanupReason.startsWith("no strong use")) return "medium";
+  if (cleanupReason.startsWith("no verified use")) return "medium";
   return "low";
 }
 
@@ -129,10 +129,10 @@ export function buildRows(skills, options) {
       let cleanupReason = "";
       if (lastStrong && strongAgeDays > options.unusedDays) {
         if (recentWeak) {
-          cleanupReason = `recent weak signal ${weakAgeDays} days ago`;
+          cleanupReason = `recent path mention ${weakAgeDays} days ago`;
         } else {
           cleanupCandidate = true;
-          cleanupReason = `last strong use ${strongAgeDays} days ago`;
+          cleanupReason = `last verified use ${strongAgeDays} days ago`;
         }
       } else if (
         !lastStrong &&
@@ -141,11 +141,11 @@ export function buildRows(skills, options) {
         installedAgeDays >= options.unusedInstalledDays
       ) {
         if (recentWeak) {
-          cleanupReason = `recent weak signal ${weakAgeDays} days ago`;
+          cleanupReason = `recent path mention ${weakAgeDays} days ago`;
         } else {
           cleanupCandidate = true;
           cleanupReason = lastWeak
-            ? `no strong use; last weak signal ${weakAgeDays} days ago`
+            ? `no verified use; last path mention ${weakAgeDays} days ago`
             : `never used; installed ${installedAgeDays} days ago`;
         }
       }
@@ -167,8 +167,11 @@ export function buildRows(skills, options) {
         cursor_strong_count: cursorStrongCount,
         filesystem_strong_count: filesystemStrongCount,
         last_strong_read: formatDate(lastStrong),
+        last_verified_use: formatDate(lastStrong),
         strong_age_days: strongAgeDays,
         weak_path_refs: usage.weak.length,
+        verified_use_count: usage.strong.length,
+        path_mention_count: usage.weak.length,
         recent_strong_count: recentStrongSignals.length,
         recent_weak_count: recentWeakSignals.length,
         recent_signal_count: recentStrongSignals.length + recentWeakSignals.length,
@@ -178,6 +181,7 @@ export function buildRows(skills, options) {
         last_path_ref: formatDate(lastWeak),
         weak_age_days: weakAgeDays,
         last_signal_at: formatDate(lastSignal),
+        last_any_signal: formatDate(lastSignal),
         signal_age_days: signalAgeDays,
         atime: formatDate(usage.atime),
         atime_age_days: ageDays(usage.atime, now),
@@ -251,16 +255,16 @@ export function payloadFor(rows, options, scanStats, now = new Date()) {
       candidates: candidates.length,
       omitted: omitted.length,
       staleCandidates: candidates.filter((row) =>
-        row.cleanup_reason.startsWith("last strong use"),
+        row.cleanup_reason.startsWith("last verified use"),
       ).length,
       neverUsedCandidates: candidates.filter((row) =>
         row.cleanup_reason.startsWith("never used"),
       ).length,
       weakOnlyCandidates: candidates.filter((row) =>
-        row.cleanup_reason.startsWith("no strong use"),
+        row.cleanup_reason.startsWith("no verified use"),
       ).length,
       recentWeakProtected: rows.filter((row) =>
-        row.cleanup_reason.startsWith("recent weak signal"),
+        row.cleanup_reason.startsWith("recent path mention"),
       ).length,
       codexStrong: rows.reduce((sum, row) => sum + row.codex_strong_count, 0),
       claudeStrong: rows.reduce((sum, row) => sum + row.claude_strong_count, 0),

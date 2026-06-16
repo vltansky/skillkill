@@ -49,14 +49,15 @@ Behavior:
 - Interactive terminal review by default when stdin/stdout are terminals.
 - Static dry-run table when output is piped or `--no-interactive` is passed.
 - Candidates first in both interactive and static views.
-- Strong evidence from Codex injected skill blocks and Claude
+- Verified use from Codex injected skill blocks and Claude
   `attributionSkill`.
-- Strong evidence from OpenCode structured `read` tool parts that target an
+- Verified use from OpenCode structured `read` tool parts that target an
   installed `SKILL.md`.
-- Weak evidence from OpenCode path mentions, Cursor chat stores, and
+- Lower-confidence path mentions from OpenCode records, Cursor chat stores, and
   user-provided local evidence directories.
-- Recent weak evidence defers cleanup by default because it may indicate use in
-  tools without native skill attribution, but it stays labeled as weak.
+- Recent path mentions defer cleanup by default because they may indicate use in
+  tools without native skill attribution, but they stay labeled as lower
+  confidence.
 - `--apply` moves candidates into a local quarantine run and prints every moved
   path.
 - `--undo` opens an interactive restore picker; `--undo latest`, `--undo RUN_ID`,
@@ -84,7 +85,7 @@ Outputs:
 2. Add fixture-based tests.
    - Codex transcript with injected skill block.
    - Claude transcript with `attributionSkill`.
-   - Path mentions that remain weak evidence.
+   - Path mentions that remain lower-confidence evidence.
    - Never-used skill older than threshold.
    - Dot-prefixed protected skill.
 

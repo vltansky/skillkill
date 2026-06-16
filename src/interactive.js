@@ -119,7 +119,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     "skillkill interactive cleanup",
     `${allCandidates.length} cleanup candidates, ${selectedVisible} selected${search ? `, ${candidates.length} visible for /${search}` : ""}${omitted.size ? `, ${omitted.size} omitted this run` : ""}${searchHidden ? `, ${searchHidden} hidden by search` : ""}${protectedHidden ? `, ${protectedHidden} protected/recent/omitted` : ""}`,
     "",
-    `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip("skill", nameWidth)} ${clip("reason", reasonWidth)} ${clip("last strong use", dateWidth)} ${clip("path", pathWidth)}`,
+    `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip("skill", nameWidth)} ${clip("cleanup reason", reasonWidth)} ${clip("last verified use", dateWidth)} ${clip("path", pathWidth)}`,
     `   --- ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(pathWidth)}`,
   ];
 
@@ -135,7 +135,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
       const active = index === cursor ? ">" : " ";
       const mark = selected.has(rowKey(row)) ? "[x]" : "[ ]";
       lines.push(
-        `${active} ${mark} ${clip(row.risk, riskWidth)} ${clip(row.description_token_cost, tokenWidth)} ${clip(row.skill, nameWidth)} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_strong_read || "-", dateWidth)} ${clip(row.path, pathWidth)}`,
+        `${active} ${mark} ${clip(row.risk, riskWidth)} ${clip(row.description_token_cost, tokenWidth)} ${clip(row.skill, nameWidth)} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_verified_use || "-", dateWidth)} ${clip(row.path, pathWidth)}`,
       );
     }
   }
@@ -154,6 +154,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
         : "Keys: / search, up/down or j/k move, space/x select, a all, o omit, enter review, q quit",
   );
   lines.push("Use --no-interactive for the static table. Cleanup is quarantine-only and undoable.");
+  lines.push("Verified use means native skill invocation; cleanup reason explains why removal is proposed.");
   return `${lines.join("\n")}\n`;
 }
 

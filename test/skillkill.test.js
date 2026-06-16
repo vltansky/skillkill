@@ -165,7 +165,7 @@ test("defaults to common installed skill roots and allows repeatable path overri
   assert.equal(custom.skillsDir, "/tmp/one");
 });
 
-test("builds rows from strong Codex and Claude evidence", async () => {
+test("builds rows from verified Codex and Claude evidence", async () => {
   const fixture = makeFixture();
   const skills = collectSkills(fixture.skillsDir);
   await scanEvidence(skills, {
@@ -190,8 +190,9 @@ test("builds rows from strong Codex and Claude evidence", async () => {
   assert.equal(byName.get("stale-skill").risk, "low");
   assert.equal(byName.get("stale-skill").description_token_cost > 0, true);
   assert.equal(byName.get("stale-skill").recent_signal_count, 0);
-  assert.match(byName.get("stale-skill").cleanup_reason, /last strong use/);
+  assert.match(byName.get("stale-skill").cleanup_reason, /last verified use/);
   assert.equal(byName.get("stale-skill").codex_strong_count, 1);
+  assert.equal(byName.get("stale-skill").verified_use_count, 1);
 
   assert.equal(byName.get("recent-skill").cleanup_candidate, false);
   assert.equal(byName.get("recent-skill").recent_signal_count, 1);
@@ -199,9 +200,10 @@ test("builds rows from strong Codex and Claude evidence", async () => {
 
   assert.equal(byName.get("weak-only").strong_count, 0);
   assert.equal(byName.get("weak-only").weak_path_refs, 1);
+  assert.equal(byName.get("weak-only").path_mention_count, 1);
   assert.equal(byName.get("weak-only").cleanup_candidate, false);
   assert.equal(byName.get("weak-only").risk, "protected");
-  assert.match(byName.get("weak-only").cleanup_reason, /recent weak signal/);
+  assert.match(byName.get("weak-only").cleanup_reason, /recent path mention/);
 
   assert.equal(byName.get(".system-skill").cleanup_candidate, false);
   assert.equal(rows[0].cleanup_candidate, true);
@@ -288,11 +290,13 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
 
   assert.equal(byName.get("claude-app-skill").claude_strong_count, 1);
   assert.equal(byName.get("claude-app-skill").last_strong_read, "2026-06-13 00:00:00");
+  assert.equal(byName.get("claude-app-skill").last_verified_use, "2026-06-13 00:00:00");
   assert.equal(byName.get("opencode-only").opencode_weak_count, 1);
   assert.equal(byName.get("opencode-only").cleanup_candidate, false);
-  assert.match(byName.get("opencode-only").cleanup_reason, /recent weak signal/);
+  assert.match(byName.get("opencode-only").cleanup_reason, /recent path mention/);
   assert.equal(byName.get("opencode-read").opencode_strong_count, 1);
   assert.equal(byName.get("opencode-read").last_strong_read, "2026-06-11 00:00:00");
+  assert.equal(byName.get("opencode-read").last_verified_use, "2026-06-11 00:00:00");
   assert.equal(byName.get("cursor-only").cursor_weak_count, 1);
   assert.equal(byName.get("extra-evidence").filesystem_weak_count, 1);
   assert.equal(stats.opencode.evidence, 3);
@@ -549,6 +553,10 @@ test("direct list json includes risk and token cost without status", async () =>
   assert.equal(stale.risk, "low");
   assert.equal(stale.description.includes("fixture skill"), true);
   assert.equal(stale.description_token_cost > 0, true);
+  assert.equal(stale.verified_use_count, stale.strong_count);
+  assert.equal(stale.path_mention_count, stale.weak_path_refs);
+  assert.equal(stale.last_verified_use, stale.last_strong_read);
+  assert.equal(stale.last_any_signal, stale.last_signal_at);
   assert.equal(payload.summary.descriptionTokenCost > 0, true);
   assert.equal(payload.savingsDays, 30);
   assert.equal(payload.summary.recentActivitySignals, 2);
@@ -631,8 +639,9 @@ test("renders interactive cleanup candidates", async () => {
 
   assert.match(screen, /skillkill interactive cleanup/);
   assert.match(screen, /2 cleanup candidates/);
-  assert.match(screen, /risk\s+tokens/);
+  assert.match(screen, /risk\s+tokens\s+skill\s+cleanup reason\s+last verified use/);
   assert.doesNotMatch(screen, /status/);
+  assert.doesNotMatch(screen, /last strong use/);
   assert.match(screen, /\[x\] low\s+\d+\s+stale-skill/);
   assert.match(screen, /o omit/);
   assert.doesNotMatch(screen, /recent-skill/);

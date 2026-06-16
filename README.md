@@ -32,15 +32,15 @@ for evidence that each skill was actually used.
 
 - Default skill roots: `~/.agents/skills`, `~/.claude/skills`,
   `~/.codex/skills`, and `~/.cursor/skills`
-- Strong evidence: native skill-invocation records from supported tools
-- Weak evidence: raw `SKILL.md` path mentions in supported local stores
-- Cleanup candidates: stale strong usage or never-used skills past the age
+- Verified use: native skill-invocation records from supported tools
+- Path mention: raw `SKILL.md` path mentions in supported local stores
+- Cleanup candidates: stale verified use or never-used skills past the age
   threshold
-- Protected rows: dot-prefixed system skills, recent strong use, recent weak
-  evidence, and omitted skills
+- Protected rows: dot-prefixed system skills, recent verified use, recent path
+  mentions, and omitted skills
 
-Weak evidence does not prove a skill was invoked, but recent weak evidence keeps
-a skill out of cleanup candidates because it may indicate use in tools without
+Path mentions do not prove a skill was invoked, but recent path mentions keep a
+skill out of cleanup candidates because they may indicate use in tools without
 native attribution.
 
 ## Safety Model
@@ -138,10 +138,10 @@ Interactive omit appends the skill name to `~/.config/skillkill/omit` unless
 | --- | --- |
 | `--path PATH`, `--skills-dir PATH` | Skills directory to scan; repeatable |
 | `--source codex|claude|opencode|cursor|filesystem|all` | Evidence source to scan |
-| `--evidence-dir PATH` | Extra transcript or log directory for weak path evidence |
-| `--unused-days N` | Mark skills stale after last strong use |
+| `--evidence-dir PATH` | Extra transcript or log directory for path mentions |
+| `--unused-days N` | Mark skills stale after last verified use |
 | `--unused-installed-days N` | Propose never-used skills after install age |
-| `--protect-weak-days N` | Defer cleanup after recent weak evidence |
+| `--protect-weak-days N` | Defer cleanup after recent path mentions |
 | `--savings-days N` | Estimate token savings from recent activity |
 | `--omit PATTERN`, `--whitelist PATTERN` | Keep matching skills out of cleanup candidates |
 | `skillkill omit PATTERN` | Persist an omit pattern |
@@ -155,7 +155,7 @@ Run `skillkill --help` for the complete command reference.
 
 ## Supported Tools
 
-| Tool | Default locations | Strong evidence | Weak evidence |
+| Tool | Default locations | Verified use | Path mentions |
 | --- | --- | --- | --- |
 | Codex | `~/.codex/sessions`, `~/.codex/archived_sessions` | Injected `<skill><name>...<path>...` transcript blocks | Raw `SKILL.md` path references when included in scanned records; broader path discovery with `--full-scan` |
 | Claude / Claude Code | `~/.claude/history.jsonl`, `~/.claude/projects`, `~/.claude/tasks`, `~/.claude/sessions`, `~/Library/Application Support/Claude/claude-code-sessions`, `~/Library/Application Support/Claude/local-agent-mode-sessions` | `attributionSkill` records | Raw `.claude/skills/.../SKILL.md` or `.agents/skills/.../SKILL.md` path references |
@@ -163,9 +163,9 @@ Run `skillkill --help` for the complete command reference.
 | Cursor | `~/.cursor/chats/**/store.db` | Not promoted yet; Cursor storage is undocumented and needs a proper SQLite/blob parser first | Raw `SKILL.md` path references found in chat DB blobs |
 | Extra filesystem roots | Paths passed with `--evidence-dir` | None | Raw `SKILL.md` path references |
 
-Strong evidence drives `last_strong_read`. Weak evidence drives `last_signal_at`
-and protects recent matches from automatic cleanup, but remains lower
-confidence.
+Verified use drives `last_verified_use`. Path mentions contribute to
+`last_any_signal` and protect recent matches from automatic cleanup, but remain
+lower confidence.
 
 ## Whitelist / Omit
 

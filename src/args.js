@@ -90,10 +90,10 @@ Options:
   --claude-app-dir PATH           Claude desktop state directory
   --opencode-dir PATH             OpenCode state directory (default: ~/.local/share/opencode)
   --cursor-dir PATH               Cursor chats directory (default: ~/.cursor/chats)
-  --evidence-dir PATH             Extra local transcript/log directory to scan for weak path refs
-  --unused-days N                 Mark skills stale after N days (default: 45)
+  --evidence-dir PATH             Extra local transcript/log directory to scan for path mentions
+  --unused-days N                 Mark skills stale after last verified use (default: 45)
   --unused-installed-days N       Propose never-used skills older than N days (default: 7)
-  --protect-weak-days N           Defer cleanup after recent weak evidence (default: 45)
+  --protect-weak-days N           Defer cleanup after recent path mentions (default: 45)
   --savings-days N                Estimate token effect from recent activity (default: 30)
   --limit N                       Table row limit (default: 40)
   --commands                      Print all candidate rm commands

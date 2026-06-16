@@ -6,12 +6,12 @@ export function formatTable(rows, limit) {
     ["skill", 30],
     ["risk", 9],
     ["tokens", 6],
-    ["last_strong_read", 19],
-    ["last_signal_at", 19],
-    ["strong", 6],
-    ["weak", 5],
-    ["candidate", 9],
-    ["reason", 34],
+    ["last_verified_use", 19],
+    ["last_any_signal", 19],
+    ["verified", 8],
+    ["mentions", 8],
+    ["cleanup?", 8],
+    ["cleanup_reason", 34],
     ["path", 0],
   ];
   const lines = [
@@ -24,10 +24,10 @@ export function formatTable(rows, limit) {
       row.skill,
       row.risk,
       String(row.description_token_cost),
-      row.last_strong_read || "-",
-      row.last_signal_at || "-",
-      String(row.strong_count),
-      String(row.weak_path_refs),
+      row.last_verified_use || "-",
+      row.last_any_signal || "-",
+      String(row.verified_use_count),
+      String(row.path_mention_count),
       row.cleanup_candidate ? "yes" : "no",
       row.cleanup_reason || "-",
       row.path,
@@ -45,7 +45,8 @@ export function formatTable(rows, limit) {
 
   lines.push(
     "",
-    "strong = provider-native skill selection; weak = local path reference in chats/session stores.",
+    "verified use = native skill invocation; path mention = raw SKILL.md path found in local history.",
+    "cleanup reason = why the row is selected for cleanup or protected from cleanup.",
   );
 
   const commands = rows
