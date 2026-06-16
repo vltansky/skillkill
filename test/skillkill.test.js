@@ -11,7 +11,7 @@ import { renderInteractiveScreen, shouldRunInteractive } from "../src/interactiv
 import { buildRows } from "../src/model.js";
 import { loadOmitPatterns } from "../src/omit.js";
 import { collectSkills, scanEvidence } from "../src/scan.js";
-import { formatCommands } from "../src/output.js";
+import { formatCommands, formatTable } from "../src/output.js";
 
 const NOW = new Date("2026-06-15T00:00:00Z");
 
@@ -190,12 +190,19 @@ test("builds rows from verified Codex and Claude evidence", async () => {
   assert.equal(byName.get("stale-skill").risk, "low");
   assert.equal(byName.get("stale-skill").description_token_cost > 0, true);
   assert.equal(byName.get("stale-skill").recent_signal_count, 0);
+  assert.equal(byName.get("stale-skill").verified_uses_14d, 0);
+  assert.equal(byName.get("stale-skill").used_14d_tokens, 0);
   assert.match(byName.get("stale-skill").cleanup_reason, /last verified use/);
   assert.equal(byName.get("stale-skill").codex_strong_count, 1);
   assert.equal(byName.get("stale-skill").verified_use_count, 1);
 
   assert.equal(byName.get("recent-skill").cleanup_candidate, false);
   assert.equal(byName.get("recent-skill").recent_signal_count, 1);
+  assert.equal(byName.get("recent-skill").verified_uses_14d, 1);
+  assert.equal(
+    byName.get("recent-skill").used_14d_tokens,
+    byName.get("recent-skill").description_token_cost,
+  );
   assert.equal(byName.get("recent-skill").claude_strong_count, 1);
 
   assert.equal(byName.get("weak-only").strong_count, 0);
@@ -387,6 +394,10 @@ test("formats cleanup commands for candidates only", async () => {
   assert.match(commands, /rm -rf '.*never-used'/);
   assert.doesNotMatch(commands, /recent-skill/);
   assert.doesNotMatch(commands, /\.system-skill/);
+
+  const table = formatTable(rows, 5);
+  assert.match(table, /used_14d_tokens/);
+  assert.match(table, /last_verified_use/);
 });
 
 test("omits cleanup candidates from cli patterns and omit files", async () => {
@@ -553,11 +564,13 @@ test("direct list json includes risk and token cost without status", async () =>
   assert.equal(stale.risk, "low");
   assert.equal(stale.description.includes("fixture skill"), true);
   assert.equal(stale.description_token_cost > 0, true);
+  assert.equal(stale.used_14d_tokens, 0);
   assert.equal(stale.verified_use_count, stale.strong_count);
   assert.equal(stale.path_mention_count, stale.weak_path_refs);
   assert.equal(stale.last_verified_use, stale.last_strong_read);
   assert.equal(stale.last_any_signal, stale.last_signal_at);
   assert.equal(payload.summary.descriptionTokenCost > 0, true);
+  assert.equal(payload.summary.used14dTokens > 0, true);
   assert.equal(payload.savingsDays, 30);
   assert.equal(payload.summary.recentActivitySignals, 2);
 });
@@ -639,10 +652,10 @@ test("renders interactive cleanup candidates", async () => {
 
   assert.match(screen, /skillkill interactive cleanup/);
   assert.match(screen, /2 cleanup candidates/);
-  assert.match(screen, /risk\s+tokens\s+skill\s+cleanup reason\s+last verified use/);
+  assert.match(screen, /risk\s+tokens\s+14d use\s+skill\s+cleanup reason\s+last verified use/);
   assert.doesNotMatch(screen, /status/);
   assert.doesNotMatch(screen, /last strong use/);
-  assert.match(screen, /\[x\] low\s+\d+\s+stale-skill/);
+  assert.match(screen, /\[x\] low\s+\d+\s+0\s+stale-skill/);
   assert.match(screen, /o omit/);
   assert.doesNotMatch(screen, /recent-skill/);
 

@@ -85,6 +85,7 @@ export function buildRows(skills, options) {
   const now = options.now || new Date();
   const protectWeakDays = options.protectWeakDays ?? options.unusedDays;
   const savingsDays = options.savingsDays ?? 30;
+  const usageTokenWindowDays = 14;
   return [...skills.values()]
     .map((usage) => {
       const lastStrong = latest(usage.strong);
@@ -92,6 +93,8 @@ export function buildRows(skills, options) {
       const lastSignal = latest([...usage.strong, ...usage.weak]);
       const recentStrongSignals = recent(usage.strong, now, savingsDays);
       const recentWeakSignals = recent(usage.weak, now, savingsDays);
+      const verifiedUses14d = recent(usage.strong, now, usageTokenWindowDays);
+      const descriptionTokenCost = estimateDescriptionTokens(usage.description);
       const codexStrongCount = usage.strong.filter((item) =>
         item.kind.startsWith("codex_"),
       ).length;
@@ -159,7 +162,9 @@ export function buildRows(skills, options) {
         is_symlink: Boolean(usage.isSymlink),
         link_target: usage.linkTarget || "",
         description: usage.description || "",
-        description_token_cost: estimateDescriptionTokens(usage.description),
+        description_token_cost: descriptionTokenCost,
+        verified_uses_14d: verifiedUses14d.length,
+        used_14d_tokens: descriptionTokenCost * verifiedUses14d.length,
         strong_count: usage.strong.length,
         codex_strong_count: codexStrongCount,
         claude_strong_count: claudeStrongCount,
@@ -280,6 +285,7 @@ export function payloadFor(rows, options, scanStats, now = new Date()) {
         0,
       ),
       recentActivitySignals: rows.reduce((sum, row) => sum + row.recent_signal_count, 0),
+      used14dTokens: rows.reduce((sum, row) => sum + row.used_14d_tokens, 0),
       scanMs: scanStats.elapsedMs,
       matchedLines: scanBuckets.reduce((sum, bucket) => sum + bucket.matchedLines, 0),
       parsedRecords: scanBuckets.reduce((sum, bucket) => sum + bucket.parsedRecords, 0),

@@ -106,9 +106,9 @@ skillkill --undo latest
 skillkill undo latest
 ```
 
-Rows include `risk` and `description_token_cost`. The token cost is a rough
-estimate from the skill `description` frontmatter field, useful for spotting
-bulky skill menus before removing anything.
+Rows include `risk`, `description_token_cost`, and `used_14d_tokens`. Token cost
+is a rough estimate from the skill `description` frontmatter field.
+`used_14d_tokens` multiplies that cost by verified uses in the last 14 days.
 
 The interactive confirmation screen shows the selected skills, description
 tokens removed, and an estimated repeated prompt saving. That estimate multiplies

@@ -7,7 +7,7 @@ function write(stream, text) {
 }
 
 function clip(value, width) {
-  const text = String(value || "");
+  const text = value === null || value === undefined ? "" : String(value);
   if (width <= 1) return text.slice(0, Math.max(0, width));
   return text.length > width ? `${text.slice(0, width - 1)}.` : text.padEnd(width);
 }
@@ -106,12 +106,13 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   const selectedVisible = candidates.filter((row) => selected.has(rowKey(row))).length;
   const riskWidth = 9;
   const tokenWidth = 6;
+  const used14dWidth = 9;
   const nameWidth = Math.min(30, Math.max(18, Math.floor(width * 0.24)));
   const reasonWidth = Math.min(38, Math.max(20, Math.floor(width * 0.32)));
   const dateWidth = 19;
   const pathWidth = Math.max(
     14,
-    width - nameWidth - reasonWidth - dateWidth - riskWidth - tokenWidth - 21,
+    width - nameWidth - reasonWidth - dateWidth - riskWidth - tokenWidth - used14dWidth - 22,
   );
   const search = String(state.search || "");
 
@@ -119,8 +120,8 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     "skillkill interactive cleanup",
     `${allCandidates.length} cleanup candidates, ${selectedVisible} selected${search ? `, ${candidates.length} visible for /${search}` : ""}${omitted.size ? `, ${omitted.size} omitted this run` : ""}${searchHidden ? `, ${searchHidden} hidden by search` : ""}${protectedHidden ? `, ${protectedHidden} protected/recent/omitted` : ""}`,
     "",
-    `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip("skill", nameWidth)} ${clip("cleanup reason", reasonWidth)} ${clip("last verified use", dateWidth)} ${clip("path", pathWidth)}`,
-    `   --- ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(pathWidth)}`,
+    `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip("14d use", used14dWidth)} ${clip("skill", nameWidth)} ${clip("cleanup reason", reasonWidth)} ${clip("last verified use", dateWidth)} ${clip("path", pathWidth)}`,
+    `   --- ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(used14dWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(pathWidth)}`,
   ];
 
   if (state.searching || search) {
@@ -135,7 +136,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
       const active = index === cursor ? ">" : " ";
       const mark = selected.has(rowKey(row)) ? "[x]" : "[ ]";
       lines.push(
-        `${active} ${mark} ${clip(row.risk, riskWidth)} ${clip(row.description_token_cost, tokenWidth)} ${clip(row.skill, nameWidth)} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_verified_use || "-", dateWidth)} ${clip(row.path, pathWidth)}`,
+        `${active} ${mark} ${clip(row.risk, riskWidth)} ${clip(row.description_token_cost, tokenWidth)} ${clip(row.used_14d_tokens, used14dWidth)} ${clip(row.skill, nameWidth)} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_verified_use || "-", dateWidth)} ${clip(row.path, pathWidth)}`,
       );
     }
   }
@@ -155,6 +156,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   );
   lines.push("Use --no-interactive for the static table. Cleanup is quarantine-only and undoable.");
   lines.push("Verified use means native skill invocation; cleanup reason explains why removal is proposed.");
+  lines.push("14d use is description tokens multiplied by verified uses in the last 14 days.");
   return `${lines.join("\n")}\n`;
 }
 
