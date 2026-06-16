@@ -47,6 +47,8 @@ The CLI will:
   roots by default where safe local stores are known.
 - Treat Codex injected skill blocks and Claude `attributionSkill` as strong
   usage evidence.
+- Treat structured OpenCode `read` tool parts that target an installed
+  `SKILL.md` as strong evidence.
 - Treat OpenCode message paths, Cursor chat-store paths, explicit
   `--evidence-dir` path matches, `atime`, and raw path mentions as weak
   evidence.

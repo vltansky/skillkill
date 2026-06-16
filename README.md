@@ -13,6 +13,7 @@ cleanup can be restored from a manifest.
 - [CLI design](docs/design/skillkill-cli.md)
 - [ADR: Build `skillkill` as a terminal-first cleanup CLI](docs/adr/terminal-first-skillkill-cli.md)
 - [Research: tools like `npx npkill`](docs/research/npkill-like-tools.md)
+- [Research: skill invocation signals](docs/research/skill-invocation-signals.md)
 
 ## Intended Command Shape
 
@@ -43,8 +44,9 @@ When output is piped, or when `--no-interactive`, `--commands`, `--json`,
 manifest. `--undo latest` restores the most recent run.
 
 `skillkill` scans Codex, Claude, OpenCode, and Cursor local stores by default.
-Codex injected skill blocks and Claude `attributionSkill` records count as
-strong evidence. OpenCode, Cursor, extra `--evidence-dir` roots, and raw path
+Codex injected skill blocks, Claude `attributionSkill` records, and structured
+OpenCode `read` tool parts that target `SKILL.md` count as strong evidence.
+OpenCode/Cursor path mentions, extra `--evidence-dir` roots, and raw path
 mentions count as weak evidence. Recent weak evidence defers cleanup by default
 because it may indicate use in a provider without native skill attribution.
 

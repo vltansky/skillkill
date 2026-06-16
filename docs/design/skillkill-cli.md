@@ -39,11 +39,14 @@ Strong evidence:
 - Codex transcript JSONL contains an injected `<skill><name>...<path>...` block.
 - Claude transcript JSONL contains `attributionSkill`.
 - Claude app session JSON contains `attributionSkill`.
+- OpenCode tool-part JSON contains a structured `read` tool input targeting
+  an installed skill `SKILL.md`.
 
 Weak evidence:
 
 - Raw path mentions in chat history.
 - OpenCode message JSON path mentions.
+- OpenCode tool-part JSON path mentions that are not structured `read` inputs.
 - Cursor chat store path mentions.
 - User-provided `--evidence-dir` path mentions.
 - `SKILL.md` access time.

@@ -11,6 +11,14 @@ const AGENTS_SKILL_PATH_RE =
   /(?<path>(?:~|\/[^"'<>\s]+)?\/\.agents\/skills\/(?<name>[^\/"'<>\s]+)\/SKILL\.md)/g;
 const CLAUDE_SKILL_PATH_RE =
   /(?:~|\/[^"'<>\s]+)?\/\.claude\/skills\/(?<name>[^\/"'<>\s]+)\/SKILL\.md/g;
+const READ_TOOL_NAMES = new Set([
+  "cat",
+  "open",
+  "openfile",
+  "read",
+  "readfile",
+  "view",
+]);
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -78,6 +86,46 @@ function attributionSkills(value, out = []) {
   return out;
 }
 
+function normalizedToolName(value) {
+  return typeof value === "string" ? value.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+}
+
+function structuredToolName(record) {
+  return (
+    record.tool ??
+    record.name ??
+    record.toolName ??
+    record.function?.name ??
+    record.toolCall?.name ??
+    record.toolCall?.toolName ??
+    record.toolCall?.function?.name
+  );
+}
+
+function maybeJson(value) {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function structuredToolInput(record) {
+  return [
+    record.input,
+    record.args,
+    record.arguments,
+    record.params,
+    record.state?.input,
+    record.function?.arguments,
+    record.toolCall?.input,
+    record.toolCall?.args,
+    record.toolCall?.arguments,
+    record.toolCall?.function?.arguments,
+  ].map(maybeJson);
+}
+
 export function listSkillFiles(skillsDir) {
   if (!fs.existsSync(skillsDir)) return [];
   return fs
@@ -125,6 +173,7 @@ function addPathEvidence(skills, skillsDir, pathText, fallbackName, evidence, st
 
 function addSkillPathReferences(skills, options, text, context) {
   const customPathRe = dynamicSkillPathRe(options.skillsDir);
+  const strong = Boolean(context.strong);
   let count = 0;
 
   for (const match of text.matchAll(CLAUDE_SKILL_PATH_RE)) {
@@ -138,7 +187,7 @@ function addSkillPathReferences(skills, options, text, context) {
           kind: context.kind,
           source: context.source,
         },
-        false,
+        strong,
       )
     ) {
       count += 1;
@@ -157,7 +206,7 @@ function addSkillPathReferences(skills, options, text, context) {
           kind: context.kind,
           source: context.source,
         },
-        false,
+        strong,
       )
     ) {
       count += 1;
@@ -177,7 +226,7 @@ function addSkillPathReferences(skills, options, text, context) {
             kind: context.kind,
             source: context.source,
           },
-          false,
+          strong,
         )
       ) {
         count += 1;
@@ -187,6 +236,21 @@ function addSkillPathReferences(skills, options, text, context) {
 
   if (context.stats) context.stats.evidence += count;
   return count;
+}
+
+function addStructuredToolReadEvidence(skills, options, record, context) {
+  const toolName = normalizedToolName(structuredToolName(record));
+  if (!READ_TOOL_NAMES.has(toolName)) return 0;
+
+  return addSkillPathReferences(
+    skills,
+    options,
+    jsonStrings(structuredToolInput(record)).join("\n"),
+    {
+      ...context,
+      strong: true,
+    },
+  );
 }
 
 function rgMatchingCoordinates(roots, pattern) {
@@ -613,6 +677,9 @@ async function scanClaude(skills, options, stats) {
 async function scanOpencode(skills, options, stats) {
   const roots = existingRoots([
     path.join(options.opencodeDir, "storage", "message"),
+    path.join(options.opencodeDir, "storage", "part"),
+    path.join(options.opencodeDir, "storage", "session", "message"),
+    path.join(options.opencodeDir, "storage", "session", "part"),
   ]);
   const pattern = skillPathSearchPattern(options.skillsDir);
 
@@ -622,6 +689,12 @@ async function scanOpencode(skills, options, stats) {
     stats.opencode,
     (record, file) => {
       const ts = timestampFromRecord(record) || fileTimestamp(file);
+      addStructuredToolReadEvidence(skills, options, record, {
+        ts,
+        kind: "opencode_tool_read_skill",
+        source: sourcePointer(file, null),
+        stats: stats.opencode,
+      });
       addSkillPathReferences(skills, options, jsonStrings(record).join("\n"), {
         ts,
         kind: "opencode_path_reference",

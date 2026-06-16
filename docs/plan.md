@@ -50,7 +50,9 @@ Behavior:
 - Candidates first in both interactive and static views.
 - Strong evidence from Codex injected skill blocks and Claude
   `attributionSkill`.
-- Weak evidence from OpenCode message JSON, Cursor chat stores, and
+- Strong evidence from OpenCode structured `read` tool parts that target an
+  installed `SKILL.md`.
+- Weak evidence from OpenCode path mentions, Cursor chat stores, and
   user-provided local evidence directories.
 - Recent weak evidence defers cleanup by default because it may indicate use in
   tools without native skill attribution, but it stays labeled as weak.

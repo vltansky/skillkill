@@ -42,6 +42,8 @@ export function timestampFromRecord(record) {
       record.lastActivityAt ??
       record.time?.updated ??
       record.time?.created ??
+      record.state?.time?.end ??
+      record.state?.time?.start ??
       record.ts,
   );
 }
@@ -75,6 +77,15 @@ export function buildRows(skills, options) {
       ).length;
       const claudeStrongCount = usage.strong.filter((item) =>
         item.kind.startsWith("claude_"),
+      ).length;
+      const opencodeStrongCount = usage.strong.filter((item) =>
+        item.kind.startsWith("opencode_"),
+      ).length;
+      const cursorStrongCount = usage.strong.filter((item) =>
+        item.kind.startsWith("cursor_"),
+      ).length;
+      const filesystemStrongCount = usage.strong.filter((item) =>
+        item.kind.startsWith("filesystem_"),
       ).length;
       const opencodeWeakCount = usage.weak.filter((item) =>
         item.kind.startsWith("opencode_"),
@@ -126,6 +137,9 @@ export function buildRows(skills, options) {
         strong_count: usage.strong.length,
         codex_strong_count: codexStrongCount,
         claude_strong_count: claudeStrongCount,
+        opencode_strong_count: opencodeStrongCount,
+        cursor_strong_count: cursorStrongCount,
+        filesystem_strong_count: filesystemStrongCount,
         last_strong_read: formatDate(lastStrong),
         strong_age_days: strongAgeDays,
         weak_path_refs: usage.weak.length,
@@ -213,6 +227,9 @@ export function payloadFor(rows, options, scanStats, now = new Date()) {
       ).length,
       codexStrong: rows.reduce((sum, row) => sum + row.codex_strong_count, 0),
       claudeStrong: rows.reduce((sum, row) => sum + row.claude_strong_count, 0),
+      opencodeStrong: rows.reduce((sum, row) => sum + row.opencode_strong_count, 0),
+      cursorStrong: rows.reduce((sum, row) => sum + row.cursor_strong_count, 0),
+      filesystemStrong: rows.reduce((sum, row) => sum + row.filesystem_strong_count, 0),
       opencodeWeak: rows.reduce((sum, row) => sum + row.opencode_weak_count, 0),
       cursorWeak: rows.reduce((sum, row) => sum + row.cursor_weak_count, 0),
       filesystemWeak: rows.reduce((sum, row) => sum + row.filesystem_weak_count, 0),

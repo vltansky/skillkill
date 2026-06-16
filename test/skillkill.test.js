@@ -121,6 +121,7 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
   for (const name of [
     "claude-app-skill",
     "opencode-only",
+    "opencode-read",
     "cursor-only",
     "extra-evidence",
   ]) {
@@ -144,6 +145,21 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
     JSON.stringify({
       time: { created: "2026-06-12T00:00:00Z" },
       body: `Loaded ${fixture.skillPath("opencode-only")}`,
+    }),
+  );
+
+  const opencodePartDir = path.join(fixture.opencodeDir, "storage", "part", "message");
+  fs.mkdirSync(opencodePartDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(opencodePartDir, "part.json"),
+    JSON.stringify({
+      type: "tool",
+      tool: "read",
+      state: {
+        status: "completed",
+        input: { filePath: fixture.skillPath("opencode-read") },
+        time: { end: "2026-06-11T00:00:00Z" },
+      },
     }),
   );
 
@@ -184,9 +200,11 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
   assert.equal(byName.get("opencode-only").opencode_weak_count, 1);
   assert.equal(byName.get("opencode-only").cleanup_candidate, false);
   assert.match(byName.get("opencode-only").cleanup_reason, /recent weak signal/);
+  assert.equal(byName.get("opencode-read").opencode_strong_count, 1);
+  assert.equal(byName.get("opencode-read").last_strong_read, "2026-06-11 00:00:00");
   assert.equal(byName.get("cursor-only").cursor_weak_count, 1);
   assert.equal(byName.get("extra-evidence").filesystem_weak_count, 1);
-  assert.equal(stats.opencode.evidence, 1);
+  assert.equal(stats.opencode.evidence, 3);
   assert.equal(stats.cursor.evidence, 1);
   assert.equal(stats.filesystem.evidence, 1);
 });
