@@ -20,6 +20,20 @@ function printRestoreResult(stdout, result) {
   for (const entry of result.skipped) {
     write(stdout, `skipped ${entry.skill}: ${entry.reason}\n`);
   }
+  printVercelLockResult(stdout, result.vercelLocks, "restore");
+}
+
+function printVercelLockResult(stdout, vercelLocks, action) {
+  if (!vercelLocks) return;
+  if (vercelLocks.restored?.length) {
+    write(stdout, `Vercel skills lock: restored ${vercelLocks.restored.length} entries.\n`);
+  }
+  if (vercelLocks.removed?.length) {
+    write(stdout, `Vercel skills lock: removed ${vercelLocks.removed.length} entries.\n`);
+  }
+  for (const error of vercelLocks.errors || []) {
+    write(stdout, `warning: could not ${action} Vercel skills lock ${error.lockPath}: ${error.error}\n`);
+  }
 }
 
 export async function main(argv = process.argv.slice(2), io = {}) {
@@ -69,6 +83,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
       for (const entry of result.entries) {
         write(stdout, `moved ${entry.originalPath} -> ${entry.quarantinedPath}\n`);
       }
+      printVercelLockResult(stdout, result.vercelLocks, "update");
       write(stdout, `Undo with: skillkill --undo ${result.manifest}\n`);
     }
   } else if (options.commands) {

@@ -49,9 +49,13 @@ native attribution.
   with `Y`.
 - `--apply` moves candidates into `~/.local/state/skillkill/runs/...`; it does
   not permanently delete them.
+- If a quarantined skill is tracked by `npx skills`, matching Vercel lock
+  entries are removed from `~/.agents/.skill-lock.json`,
+  `$XDG_STATE_HOME/skills/.skill-lock.json`, or an existing project
+  `skills-lock.json`, then saved in the undo manifest.
 - `skillkill --undo` opens an interactive restore picker.
 - `skillkill --undo latest`, `--undo RUN_ID`, and `--undo PATH` restore directly
-  for scripts.
+  for scripts, including any Vercel lock entries saved by cleanup.
 - `--omit`, `--whitelist`, and `~/.config/skillkill/omit` keep known-good skills
   out of cleanup candidates.
 

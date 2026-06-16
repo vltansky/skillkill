@@ -124,6 +124,19 @@ function makeFixture() {
   };
 }
 
+function makeVercelLockEntry(skillName) {
+  return {
+    source: "vercel-labs/agent-skills",
+    sourceType: "github",
+    sourceUrl: "https://github.com/vercel-labs/agent-skills",
+    ref: "main",
+    skillPath: `skills/${skillName}`,
+    skillFolderHash: `hash-${skillName}`,
+    installedAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-02T00:00:00.000Z",
+  };
+}
+
 test("builds rows from strong Codex and Claude evidence", async () => {
   const fixture = makeFixture();
   const skills = collectSkills(fixture.skillsDir);
@@ -608,6 +621,101 @@ test("apply quarantines candidates and undo restores them", async () => {
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("weak-only"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("recent-skill"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath(".system-skill"))), true);
+});
+
+test("apply removes Vercel skills lock entries and undo restores them", async () => {
+  const fixture = makeFixture();
+  const previousXdgStateHome = process.env.XDG_STATE_HOME;
+  const xdgStateHome = path.join(fixture.root, "xdg-state");
+  const lockPath = path.join(xdgStateHome, "skills", ".skill-lock.json");
+
+  process.env.XDG_STATE_HOME = xdgStateHome;
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  fs.writeFileSync(
+    lockPath,
+    `${JSON.stringify(
+      {
+        version: 3,
+        dismissed: { findSkillsPrompt: true },
+        skills: {
+          "stale-skill": makeVercelLockEntry("stale-skill"),
+          "never-used": makeVercelLockEntry("never-used"),
+          "recent-skill": makeVercelLockEntry("recent-skill"),
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+
+  try {
+    let stdout = "";
+    await main(
+      [
+        "--path",
+        fixture.skillsDir,
+        "--codex-dir",
+        fixture.codexDir,
+        "--claude-dir",
+        fixture.claudeDir,
+        "--claude-app-dir",
+        fixture.claudeAppDir,
+        "--opencode-dir",
+        fixture.opencodeDir,
+        "--cursor-dir",
+        fixture.cursorDir,
+        "--unused-installed-days",
+        "0",
+        "--state-dir",
+        fixture.stateDir,
+        "--apply",
+        "--full-scan",
+      ],
+      {
+        now: NOW,
+        stdout: { write: (chunk) => (stdout += chunk) },
+        stderr: { write: () => {} },
+      },
+    );
+
+    assert.match(stdout, /Vercel skills lock: removed 2 entries/);
+    const lockAfterApply = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+    assert.equal(lockAfterApply.skills["stale-skill"], undefined);
+    assert.equal(lockAfterApply.skills["never-used"], undefined);
+    assert.equal(lockAfterApply.skills["recent-skill"].source, "vercel-labs/agent-skills");
+    assert.equal(lockAfterApply.dismissed.findSkillsPrompt, true);
+
+    const latestState = JSON.parse(
+      fs.readFileSync(path.join(fixture.stateDir, "latest.json"), "utf8"),
+    );
+    const manifest = JSON.parse(fs.readFileSync(latestState.manifest, "utf8"));
+    const staleEntry = manifest.entries.find((entry) => entry.skill === "stale-skill");
+    assert.equal(staleEntry.vercelLockEntries[0].lockPath, lockPath);
+    assert.equal(staleEntry.vercelLockEntries[0].entry.skillFolderHash, "hash-stale-skill");
+
+    let undoStdout = "";
+    await main(
+      ["--state-dir", fixture.stateDir, "--undo", "latest"],
+      {
+        now: NOW,
+        stdout: { write: (chunk) => (undoStdout += chunk) },
+        stderr: { write: () => {} },
+      },
+    );
+
+    assert.match(undoStdout, /Vercel skills lock: restored 2 entries/);
+    const lockAfterUndo = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+    assert.equal(lockAfterUndo.skills["stale-skill"].skillFolderHash, "hash-stale-skill");
+    assert.equal(lockAfterUndo.skills["never-used"].skillFolderHash, "hash-never-used");
+    assert.equal(lockAfterUndo.skills["recent-skill"].skillFolderHash, "hash-recent-skill");
+    assert.equal(lockAfterUndo.dismissed.findSkillsPrompt, true);
+  } finally {
+    if (previousXdgStateHome === undefined) {
+      delete process.env.XDG_STATE_HOME;
+    } else {
+      process.env.XDG_STATE_HOME = previousXdgStateHome;
+    }
+  }
 });
 
 test("interactive undo restores a selected cleanup run", async () => {

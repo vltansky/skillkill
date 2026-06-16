@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { removeSkillsFromVercelLocks, restoreVercelLockEntries } from "./vercel-lock.js";
 
 function safeRunId(now) {
   return now.toISOString().replaceAll(":", "-").replaceAll(".", "-");
@@ -103,6 +104,15 @@ export function quarantineCandidates(rows, options) {
     });
   }
 
+  const vercelLocks = removeSkillsFromVercelLocks(
+    entries.map((entry) => entry.skill),
+    options,
+  );
+  for (const entry of entries) {
+    const locks = vercelLocks.entriesBySkill.get(entry.skill);
+    if (locks?.length) entry.vercelLockEntries = locks;
+  }
+
   const manifest = {
     version: 1,
     id: path.basename(runDir),
@@ -115,7 +125,15 @@ export function quarantineCandidates(rows, options) {
     manifest: manifestPath(runDir),
   });
 
-  return { count: entries.length, manifest: manifestPath(runDir), entries };
+  return {
+    count: entries.length,
+    manifest: manifestPath(runDir),
+    entries,
+    vercelLocks: {
+      removed: vercelLocks.removed,
+      errors: vercelLocks.errors,
+    },
+  };
 }
 
 export function restoreCleanupRun(stateDir, undoTarget) {
@@ -138,6 +156,9 @@ export function restoreCleanupRun(stateDir, undoTarget) {
     restored.push(entry);
   }
 
+  const vercelLockEntries = restored.flatMap((entry) => entry.vercelLockEntries || []);
+  const vercelLocks = restoreVercelLockEntries(vercelLockEntries);
+
   manifest.restoredAt = new Date().toISOString();
   manifest.restored = restored.map((entry) => entry.skill);
   manifest.skipped = skipped.map((entry) => ({
@@ -146,5 +167,5 @@ export function restoreCleanupRun(stateDir, undoTarget) {
   }));
   writeJson(file, manifest);
 
-  return { manifest: file, restored, skipped };
+  return { manifest: file, restored, skipped, vercelLocks };
 }

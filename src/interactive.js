@@ -136,6 +136,12 @@ function printResult(stdout, result) {
   for (const entry of result.entries) {
     write(stdout, `moved ${entry.originalPath} -> ${entry.quarantinedPath}\n`);
   }
+  if (result.vercelLocks?.removed?.length) {
+    write(stdout, `Vercel skills lock: removed ${result.vercelLocks.removed.length} entries.\n`);
+  }
+  for (const error of result.vercelLocks?.errors || []) {
+    write(stdout, `warning: could not update Vercel skills lock ${error.lockPath}: ${error.error}\n`);
+  }
   write(stdout, `Undo with: skillkill --undo ${result.manifest}\n`);
 }
 
