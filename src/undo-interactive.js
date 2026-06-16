@@ -1,5 +1,6 @@
 import path from "node:path";
 import readline from "node:readline";
+import { colors, shouldUseColor } from "./ansi.js";
 import { listCleanupRuns, restoreCleanupRun } from "./quarantine.js";
 
 function write(stream, text) {
@@ -19,6 +20,7 @@ function runStatus(run) {
 }
 
 export function renderInteractiveUndoScreen(runs, state = {}, dimensions = {}) {
+  const color = colors(Boolean(dimensions.colors));
   const cursor = Math.min(Math.max(0, state.cursor || 0), Math.max(0, runs.length - 1));
   const height = Math.max(10, dimensions.rows || 24);
   const width = Math.max(72, dimensions.columns || 100);
@@ -36,21 +38,26 @@ export function renderInteractiveUndoScreen(runs, state = {}, dimensions = {}) {
   const selectedRun = runs[cursor];
 
   const lines = [
-    "skillkill interactive undo",
-    `${runs.length} cleanup runs`,
+    color.title("skillkill interactive undo"),
+    color.dim(`${runs.length} cleanup runs`),
     "",
-    `  ${clip("run", idWidth)} ${clip("created", dateWidth)} ${clip("skills", countWidth)} ${clip("status", statusWidth)} ${clip("manifest", manifestWidth)}`,
-    `  ${"-".repeat(idWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(countWidth)} ${"-".repeat(statusWidth)} ${"-".repeat(manifestWidth)}`,
+    color.header(
+      `  ${clip("run", idWidth)} ${clip("created", dateWidth)} ${clip("skills", countWidth)} ${clip("status", statusWidth)} ${clip("manifest", manifestWidth)}`,
+    ),
+    color.dim(
+      `  ${"-".repeat(idWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(countWidth)} ${"-".repeat(statusWidth)} ${"-".repeat(manifestWidth)}`,
+    ),
   ];
 
   if (runs.length === 0) {
-    lines.push("", "No cleanup runs found.");
+    lines.push("", color.good("No cleanup runs found."));
   } else {
     for (let index = start; index < end; index += 1) {
       const run = runs[index];
-      const active = index === cursor ? ">" : " ";
+      const active = index === cursor ? color.info(">") : " ";
+      const status = runStatus(run);
       lines.push(
-        `${active} ${clip(run.id, idWidth)} ${clip(run.createdAt.replace("T", " ").replace("Z", ""), dateWidth)} ${clip(run.entries.length, countWidth)} ${clip(runStatus(run), statusWidth)} ${clip(run.manifest, manifestWidth)}`,
+        `${active} ${color.info(clip(run.id, idWidth))} ${clip(run.createdAt.replace("T", " ").replace("Z", ""), dateWidth)} ${color.token(clip(run.entries.length, countWidth))} ${status === "available" ? color.good(clip(status, statusWidth)) : color.dim(clip(status, statusWidth))} ${color.dim(clip(run.manifest, manifestWidth))}`,
       );
     }
   }
@@ -58,23 +65,23 @@ export function renderInteractiveUndoScreen(runs, state = {}, dimensions = {}) {
   if (state.confirming && selectedRun) {
     lines.push(
       "",
-      "! REVIEW RESTORE",
-      `  ${selectedRun.entries.length} skills will be restored from ${selectedRun.id}.`,
-      "  Press Enter to restore, Esc to return to review.",
-      state.message ? `  ${state.message}` : "",
+      color.warn("! REVIEW RESTORE"),
+      `  ${color.token(selectedRun.entries.length)} skills will be restored from ${color.info(selectedRun.id)}.`,
+      `  ${color.good("Press Enter to restore.")} ${color.dim("Press Esc to return to review.")}`,
+      state.message ? color.warn(`  ${state.message}`) : "",
     );
   } else if (state.message) {
-    lines.push("", state.message);
+    lines.push("", color.warn(state.message));
   } else {
     lines.push("");
   }
 
   lines.push(
     state.confirming
-      ? "Confirm: enter restore, esc review"
-      : "Keys: up/down or j/k move, enter restore, q quit",
+      ? color.warn("Confirm: enter restore, esc review")
+      : color.dim("Keys: up/down or j/k move, enter restore, q quit"),
   );
-  lines.push("Direct restore remains available with --undo latest, --undo RUN_ID, or --undo PATH.");
+  lines.push(color.dim("Direct restore remains available with --undo latest, --undo RUN_ID, or --undo PATH."));
   return `${lines.join("\n")}\n`;
 }
 
@@ -85,6 +92,7 @@ function render(stdout, runs, state) {
     renderInteractiveUndoScreen(runs, state, {
       columns: stdout.columns,
       rows: stdout.rows,
+      colors: shouldUseColor(stdout),
     }),
   );
 }

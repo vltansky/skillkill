@@ -11,6 +11,7 @@ import { renderInteractiveScreen, shouldRunInteractive } from "../src/interactiv
 import { buildRows } from "../src/model.js";
 import { loadOmitPatterns } from "../src/omit.js";
 import { collectSkills, scanEvidence } from "../src/scan.js";
+import { renderInteractiveUndoScreen } from "../src/undo-interactive.js";
 import { formatCommands, formatTable } from "../src/output.js";
 
 const NOW = new Date("2026-06-15T00:00:00Z");
@@ -653,11 +654,21 @@ test("renders interactive cleanup candidates", async () => {
   assert.match(screen, /skillkill interactive cleanup/);
   assert.match(screen, /2 cleanup candidates/);
   assert.match(screen, /risk\s+tokens\s+14d use\s+skill\s+cleanup reason\s+last verified use/);
+  assert.doesNotMatch(screen, /\x1b\[/);
   assert.doesNotMatch(screen, /status/);
   assert.doesNotMatch(screen, /last strong use/);
   assert.match(screen, /\[x\] low\s+\d+\s+0\s+stale-skill/);
   assert.match(screen, /o omit/);
   assert.doesNotMatch(screen, /recent-skill/);
+
+  const colorScreen = renderInteractiveScreen(
+    rows,
+    { cursor: 0, selected: new Set([staleRow.id]) },
+    { columns: 120, rows: 24, colors: true },
+  );
+
+  assert.match(colorScreen, /\x1b\[/);
+  assert.match(colorScreen, /\x1b\[1;36mskillkill interactive cleanup\x1b\[0m/);
 
   const omittedScreen = renderInteractiveScreen(
     rows,
@@ -1141,7 +1152,7 @@ test("interactive undo restores a selected cleanup run", async () => {
   assert.match(stdout.output, /2\s+available/);
   press(stdin, "enter", "\r");
   await waitForOutput(stdout, /! REVIEW RESTORE/);
-  assert.match(stdout.output, /Press Enter to restore, Esc to return to review/);
+  assert.match(stdout.output, /Press Enter to restore\. Press Esc to return to review/);
   press(stdin, "down");
   await waitForOutput(stdout, /Press Enter to restore or Esc to review/);
   press(stdin, "enter", "\r");
@@ -1153,6 +1164,28 @@ test("interactive undo restores a selected cleanup run", async () => {
   assert.match(stdout.output, /Restored 2 skills/);
   assert.equal(stdin.paused, true);
   assert.equal(stdin.isRaw, false);
+});
+
+test("renders interactive undo colors only when enabled", () => {
+  const runs = [
+    {
+      id: "2026-06-15T00-00-00Z",
+      createdAt: "2026-06-15T00:00:00Z",
+      entries: [{ originalPath: "/tmp/skill", quarantinedPath: "/tmp/run/skill" }],
+      manifest: "/tmp/skillkill/manifest.json",
+      restoredAt: "",
+      skipped: [],
+    },
+  ];
+
+  const screen = renderInteractiveUndoScreen(runs, {}, { columns: 120, rows: 24 });
+  assert.match(screen, /skillkill interactive undo/);
+  assert.match(screen, /available/);
+  assert.doesNotMatch(screen, /\x1b\[/);
+
+  const colorScreen = renderInteractiveUndoScreen(runs, {}, { columns: 120, rows: 24, colors: true });
+  assert.match(colorScreen, /\x1b\[/);
+  assert.match(colorScreen, /\x1b\[1;36mskillkill interactive undo\x1b\[0m/);
 });
 
 test("bare undo requires a tty", async () => {

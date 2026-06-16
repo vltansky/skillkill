@@ -1,4 +1,5 @@
 import readline from "node:readline";
+import { colors, shouldUseColor } from "./ansi.js";
 import { appendOmitPattern } from "./omit.js";
 import { quarantineCandidates } from "./quarantine.js";
 
@@ -87,6 +88,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     return renderConfirmationScreen(rows, state, dimensions);
   }
 
+  const color = colors(Boolean(dimensions.colors));
   const allCandidates = allCandidateRows(rows, state);
   const candidates = candidateRows(rows, state);
   const total = rows.length;
@@ -117,50 +119,61 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   const search = String(state.search || "");
 
   const lines = [
-    "skillkill interactive cleanup",
-    `${allCandidates.length} cleanup candidates, ${selectedVisible} selected${search ? `, ${candidates.length} visible for /${search}` : ""}${omitted.size ? `, ${omitted.size} omitted this run` : ""}${searchHidden ? `, ${searchHidden} hidden by search` : ""}${protectedHidden ? `, ${protectedHidden} protected/recent/omitted` : ""}`,
+    color.title("skillkill interactive cleanup"),
+    color.dim(
+      `${allCandidates.length} cleanup candidates, ${selectedVisible} selected${search ? `, ${candidates.length} visible for /${search}` : ""}${omitted.size ? `, ${omitted.size} omitted this run` : ""}${searchHidden ? `, ${searchHidden} hidden by search` : ""}${protectedHidden ? `, ${protectedHidden} protected/recent/omitted` : ""}`,
+    ),
     "",
-    `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip("14d use", used14dWidth)} ${clip("skill", nameWidth)} ${clip("cleanup reason", reasonWidth)} ${clip("last verified use", dateWidth)} ${clip("path", pathWidth)}`,
-    `   --- ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(used14dWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(pathWidth)}`,
+    color.header(
+      `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip("14d use", used14dWidth)} ${clip("skill", nameWidth)} ${clip("cleanup reason", reasonWidth)} ${clip("last verified use", dateWidth)} ${clip("path", pathWidth)}`,
+    ),
+    color.dim(
+      `   --- ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(used14dWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(pathWidth)}`,
+    ),
   ];
 
   if (state.searching || search) {
-    lines.push(`Search: /${search}${state.searching ? "_" : ""}`);
+    lines.push(color.info(`Search: /${search}${state.searching ? "_" : ""}`));
   }
 
   if (candidates.length === 0) {
-    lines.push("", "No cleanup candidates.");
+    lines.push("", color.good("No cleanup candidates."));
   } else {
     for (let index = start; index < end; index += 1) {
       const row = candidates[index];
-      const active = index === cursor ? ">" : " ";
-      const mark = selected.has(rowKey(row)) ? "[x]" : "[ ]";
+      const isSelected = selected.has(rowKey(row));
+      const active = index === cursor ? color.info(">") : " ";
+      const mark = isSelected ? color.good("[x]") : color.dim("[ ]");
+      const skill = isSelected
+        ? color.good(clip(row.skill, nameWidth))
+        : clip(row.skill, nameWidth);
       lines.push(
-        `${active} ${mark} ${clip(row.risk, riskWidth)} ${clip(row.description_token_cost, tokenWidth)} ${clip(row.used_14d_tokens, used14dWidth)} ${clip(row.skill, nameWidth)} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_verified_use || "-", dateWidth)} ${clip(row.path, pathWidth)}`,
+        `${active} ${mark} ${color.risk(clip(row.risk, riskWidth), row.risk)} ${color.token(clip(row.description_token_cost, tokenWidth))} ${color.usage(clip(row.used_14d_tokens, used14dWidth), row.used_14d_tokens)} ${skill} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_verified_use || "-", dateWidth)} ${color.dim(clip(row.path, pathWidth))}`,
       );
     }
   }
 
   if (state.message) {
-    lines.push("", state.message);
+    lines.push("", color.warn(state.message));
   } else {
     lines.push("");
   }
 
   lines.push(
     state.confirming
-      ? "Confirm: enter quarantine, esc review"
+      ? color.warn("Confirm: enter quarantine, esc review")
       : state.searching
-        ? "Search: type to filter, enter keep, esc clear, backspace delete"
-        : "Keys: / search, up/down or j/k move, space/x select, a all, o omit, enter review, q quit",
+        ? color.info("Search: type to filter, enter keep, esc clear, backspace delete")
+        : color.dim("Keys: / search, up/down or j/k move, space/x select, a all, o omit, enter review, q quit"),
   );
-  lines.push("Use --no-interactive for the static table. Cleanup is quarantine-only and undoable.");
-  lines.push("Verified use means native skill invocation; cleanup reason explains why removal is proposed.");
-  lines.push("14d use is description tokens multiplied by verified uses in the last 14 days.");
+  lines.push(color.dim("Use --no-interactive for the static table. Cleanup is quarantine-only and undoable."));
+  lines.push(color.dim("Verified use means native skill invocation; cleanup reason explains why removal is proposed."));
+  lines.push(color.dim("14d use is description tokens multiplied by verified uses in the last 14 days."));
   return `${lines.join("\n")}\n`;
 }
 
 function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
+  const color = colors(Boolean(dimensions.colors));
   const picked = selectedCandidateRows(rows, state);
   const height = Math.max(10, dimensions.rows || 24);
   const width = Math.max(72, dimensions.columns || 100);
@@ -172,35 +185,35 @@ function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
   const reasonWidth = Math.max(20, width - skillWidth - 28);
 
   const lines = [
-    "skillkill confirm cleanup",
+    color.warn("skillkill confirm cleanup"),
     "",
-    `You are going to remove ${picked.length} skills from active use and move them to quarantine.`,
-    "This is undoable with skillkill --undo.",
+    color.danger(`You are going to remove ${picked.length} skills from active use and move them to quarantine.`),
+    color.dim("This is undoable with skillkill --undo."),
     "",
-    "Selected skills:",
+    color.header("Selected skills:"),
   ];
 
   if (picked.length === 0) {
-    lines.push("  No selected cleanup candidates.");
+    lines.push(color.good("  No selected cleanup candidates."));
   } else {
     for (const row of shown) {
       lines.push(
-        `  - ${clip(row.skill, skillWidth)} ${clip(`${row.description_token_cost} tokens`, 12)} ${clip(row.cleanup_reason, reasonWidth)}`,
+        `  - ${color.good(clip(row.skill, skillWidth))} ${color.token(clip(`${row.description_token_cost} tokens`, 12))} ${clip(row.cleanup_reason, reasonWidth)}`,
       );
     }
-    if (hidden) lines.push(`  ... and ${hidden} more`);
+    if (hidden) lines.push(color.dim(`  ... and ${hidden} more`));
   }
 
   lines.push(
     "",
-    "Token effect:",
-    `  Removed description tokens: ${impact.removedTokens}`,
-    `  Recent activity baseline: ${impact.recentActivitySignals} signals/sessions in last ${impact.savingsDays} days`,
-    `  Estimated repeated prompt savings: ${impact.estimatedRepeatedSavings} tokens`,
+    color.header("Token effect:"),
+    `  Removed description tokens: ${color.token(impact.removedTokens)}`,
+    `  Recent activity baseline: ${color.info(impact.recentActivitySignals)} signals/sessions in last ${impact.savingsDays} days`,
+    `  Estimated repeated prompt savings: ${color.good(impact.estimatedRepeatedSavings)} tokens`,
     "",
-    "Press Enter to quarantine. Press Esc to return to review.",
-    state.message ? state.message : "",
-    "Confirm: enter quarantine, esc review",
+    `${color.good("Press Enter to quarantine.")} ${color.dim("Press Esc to return to review.")}`,
+    state.message ? color.warn(state.message) : "",
+    color.warn("Confirm: enter quarantine, esc review"),
   );
   return `${lines.join("\n")}\n`;
 }
@@ -212,6 +225,7 @@ function render(stdout, rows, state) {
     renderInteractiveScreen(rows, state, {
       columns: stdout.columns,
       rows: stdout.rows,
+      colors: shouldUseColor(stdout),
     }),
   );
 }

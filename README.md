@@ -25,6 +25,9 @@ In a real terminal, `skillkill` opens an interactive review. When output is
 piped, or when `--no-interactive`, `--json`, `--csv`, or `--snapshot` is used,
 it prints static output instead.
 
+Interactive screens use terminal colors when supported. Set `NO_COLOR=1` to
+disable color.
+
 ## What It Does
 
 `skillkill` scans installed skill directories, then checks local agent history
