@@ -59,6 +59,55 @@ function fileTimestamp(file) {
   }
 }
 
+function unquoteFrontmatterValue(value) {
+  const trimmed = value.trim();
+  if (trimmed.length < 2) return trimmed;
+  const first = trimmed[0];
+  const last = trimmed[trimmed.length - 1];
+  if ((first === `"` && last === `"`) || (first === "'" && last === "'")) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function parseFrontmatter(content) {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) return {};
+
+  const metadata = {};
+  const lines = match[1].split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const field = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!field) continue;
+
+    const [, key, rawValue] = field;
+    if (/^[>|]/.test(rawValue.trim())) {
+      const block = [];
+      for (index += 1; index < lines.length; index += 1) {
+        if (!/^\s+/.test(lines[index])) {
+          index -= 1;
+          break;
+        }
+        block.push(lines[index].trim());
+      }
+      metadata[key] = rawValue.trim().startsWith("|") ? block.join("\n") : block.join(" ");
+      continue;
+    }
+
+    metadata[key] = unquoteFrontmatterValue(rawValue);
+  }
+  return metadata;
+}
+
+function readSkillMetadata(file) {
+  try {
+    return parseFrontmatter(fs.readFileSync(file, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
 function addStrategy(stats, strategy) {
   if (stats.strategy === "not-run") {
     stats.strategy = strategy;
@@ -142,9 +191,11 @@ export function collectSkills(skillsDir) {
   const skills = new Map();
   for (const entry of listSkillFiles(skillsDir)) {
     const stat = fs.statSync(entry.file);
+    const metadata = readSkillMetadata(entry.file);
     skills.set(entry.name, {
       skill: entry.name,
       path: entry.file,
+      description: typeof metadata.description === "string" ? metadata.description : "",
       atime: stat.atime,
       birthtime: stat.birthtime,
       mtime: stat.mtime,

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 
 function splitPatterns(value) {
   return String(value || "")
@@ -30,6 +31,34 @@ function readOmitFile(file) {
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith("#"))
     .flatMap(splitPatterns);
+}
+
+export function appendOmitPattern(options, pattern) {
+  if (options.noOmitFile || !options.omitFile) {
+    return { saved: false, alreadyPresent: false, file: "", pattern };
+  }
+
+  let existing = "";
+  try {
+    existing = fs.existsSync(options.omitFile) ? fs.readFileSync(options.omitFile, "utf8") : "";
+  } catch {
+    existing = "";
+  }
+
+  const alreadyPresent = existing
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .flatMap(splitPatterns)
+    .some((line) => line === pattern);
+  if (alreadyPresent) {
+    return { saved: true, alreadyPresent: true, file: options.omitFile, pattern };
+  }
+
+  fs.mkdirSync(path.dirname(options.omitFile), { recursive: true });
+  const needsLeadingNewline = existing.length > 0 && !existing.endsWith("\n");
+  fs.appendFileSync(options.omitFile, `${needsLeadingNewline ? "\n" : ""}${pattern}\n`);
+  return { saved: true, alreadyPresent: false, file: options.omitFile, pattern };
 }
 
 export function loadOmitPatterns(options) {

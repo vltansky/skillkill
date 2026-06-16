@@ -74,7 +74,10 @@ function makeFixture() {
   const skillPath = (name) => path.join(skillsDir, name, "SKILL.md");
   const writeSkill = (name) => {
     fs.mkdirSync(path.dirname(skillPath(name)), { recursive: true });
-    fs.writeFileSync(skillPath(name), `---\nname: ${name}\n---\n# ${name}\n`);
+    fs.writeFileSync(
+      skillPath(name),
+      `---\nname: ${name}\ndescription: ${name} fixture skill for cleanup tests\n---\n# ${name}\n`,
+    );
   };
 
   for (const name of [
@@ -159,18 +162,25 @@ test("builds rows from strong Codex and Claude evidence", async () => {
 
   const byName = new Map(rows.map((row) => [row.skill, row]));
   assert.equal(byName.get("stale-skill").cleanup_candidate, true);
+  assert.equal(byName.get("stale-skill").status, "ready");
+  assert.equal(byName.get("stale-skill").risk, "low");
+  assert.equal(byName.get("stale-skill").description_token_cost > 0, true);
   assert.match(byName.get("stale-skill").cleanup_reason, /last strong use/);
   assert.equal(byName.get("stale-skill").codex_strong_count, 1);
 
   assert.equal(byName.get("recent-skill").cleanup_candidate, false);
+  assert.equal(byName.get("recent-skill").status, "active");
   assert.equal(byName.get("recent-skill").claude_strong_count, 1);
 
   assert.equal(byName.get("weak-only").strong_count, 0);
   assert.equal(byName.get("weak-only").weak_path_refs, 1);
   assert.equal(byName.get("weak-only").cleanup_candidate, false);
+  assert.equal(byName.get("weak-only").status, "weak-signal");
+  assert.equal(byName.get("weak-only").risk, "protected");
   assert.match(byName.get("weak-only").cleanup_reason, /recent weak signal/);
 
   assert.equal(byName.get(".system-skill").cleanup_candidate, false);
+  assert.equal(byName.get(".system-skill").status, "protected");
   assert.equal(rows[0].cleanup_candidate, true);
 });
 
@@ -402,6 +412,113 @@ test("whitelist alias removes skills from json and commands output", async () =>
   assert.match(commandsStdout, /never-used/);
 });
 
+test("direct omit command persists omit patterns", async () => {
+  const fixture = makeFixture();
+  const omitFile = path.join(fixture.root, "omit.txt");
+  let stdout = "";
+
+  await main(["omit", "stale-skill", "ck-*", "--omit-file", omitFile], {
+    now: NOW,
+    stdout: { write: (chunk) => (stdout += chunk) },
+    stderr: { write: () => {} },
+  });
+
+  assert.match(stdout, /Omitted stale-skill/);
+  assert.match(stdout, /Omitted ck-\*/);
+  assert.match(fs.readFileSync(omitFile, "utf8"), /^stale-skill$/m);
+  assert.match(fs.readFileSync(omitFile, "utf8"), /^ck-\*$/m);
+});
+
+test("direct list json includes status risk and token cost", async () => {
+  const fixture = makeFixture();
+  let stdout = "";
+
+  await main(
+    [
+      "list",
+      "--path",
+      fixture.skillsDir,
+      "--codex-dir",
+      fixture.codexDir,
+      "--claude-dir",
+      fixture.claudeDir,
+      "--claude-app-dir",
+      fixture.claudeAppDir,
+      "--opencode-dir",
+      fixture.opencodeDir,
+      "--cursor-dir",
+      fixture.cursorDir,
+      "--unused-installed-days",
+      "0",
+      "--json",
+      "--full-scan",
+      "--no-omit-file",
+    ],
+    {
+      now: NOW,
+      stdout: { write: (chunk) => (stdout += chunk) },
+      stderr: { write: () => {} },
+    },
+  );
+
+  const payload = JSON.parse(stdout);
+  const stale = payload.rows.find((row) => row.skill === "stale-skill");
+  assert.equal(stale.status, "ready");
+  assert.equal(stale.risk, "low");
+  assert.equal(stale.description.includes("fixture skill"), true);
+  assert.equal(stale.description_token_cost > 0, true);
+  assert.equal(payload.summary.descriptionTokenCost > 0, true);
+});
+
+test("direct cleanup apply and undo latest commands work", async () => {
+  const fixture = makeFixture();
+  let cleanupStdout = "";
+
+  await main(
+    [
+      "cleanup",
+      "--path",
+      fixture.skillsDir,
+      "--codex-dir",
+      fixture.codexDir,
+      "--claude-dir",
+      fixture.claudeDir,
+      "--claude-app-dir",
+      fixture.claudeAppDir,
+      "--opencode-dir",
+      fixture.opencodeDir,
+      "--cursor-dir",
+      fixture.cursorDir,
+      "--unused-installed-days",
+      "0",
+      "--state-dir",
+      fixture.stateDir,
+      "--apply",
+      "--full-scan",
+    ],
+    {
+      now: NOW,
+      stdout: { write: (chunk) => (cleanupStdout += chunk) },
+      stderr: { write: () => {} },
+    },
+  );
+
+  assert.match(cleanupStdout, /Applying cleanup to 2 candidates/);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), false);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), false);
+
+  let undoStdout = "";
+  await main(["undo", "latest", "--state-dir", fixture.stateDir], {
+    now: NOW,
+    stdout: { write: (chunk) => (undoStdout += chunk) },
+    stderr: { write: () => {} },
+  });
+
+  assert.match(undoStdout, /Restored 2 skills/);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), true);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), true);
+});
+
 test("renders interactive cleanup candidates", async () => {
   const fixture = makeFixture();
   const skills = collectSkills(fixture.skillsDir);
@@ -429,7 +546,8 @@ test("renders interactive cleanup candidates", async () => {
 
   assert.match(screen, /skillkill interactive cleanup/);
   assert.match(screen, /2 cleanup candidates/);
-  assert.match(screen, /\[x\] stale-skill/);
+  assert.match(screen, /status\s+risk\s+tokens/);
+  assert.match(screen, /\[x\] ready\s+low\s+\d+\s+stale-skill/);
   assert.match(screen, /o omit/);
   assert.doesNotMatch(screen, /recent-skill/);
 
@@ -442,6 +560,17 @@ test("renders interactive cleanup candidates", async () => {
   assert.match(omittedScreen, /1 cleanup candidates/);
   assert.match(omittedScreen, /1 omitted this run/);
   assert.doesNotMatch(omittedScreen, /\[.\] stale-skill/);
+
+  const searchScreen = renderInteractiveScreen(
+    rows,
+    { cursor: 0, selected: new Set(), omitted: new Set(), search: "never" },
+    { columns: 120, rows: 24 },
+  );
+
+  assert.match(searchScreen, /1 visible for \/never/);
+  assert.match(searchScreen, /Search: \/never/);
+  assert.match(searchScreen, /never-used/);
+  assert.doesNotMatch(searchScreen, /stale-skill/);
 });
 
 test("interactive mode defaults only for real terminals", () => {
@@ -465,6 +594,13 @@ test("interactive mode defaults only for real terminals", () => {
   );
   assert.equal(
     shouldRunInteractive({ ...defaults, noInteractive: true }, {
+      stdin: { isTTY: true },
+      stdout: { isTTY: true },
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRunInteractive({ ...defaults, command: "list" }, {
       stdin: { isTTY: true },
       stdout: { isTTY: true },
     }),
@@ -503,11 +639,11 @@ test("interactive e2e selects with enter and quarantines confirmed rows", async 
   await waitForOutput(stdout, /skillkill interactive cleanup/);
   press(stdin, "space", " ");
   press(stdin, "enter", "\r");
-  await waitForOutput(stdout, /! CONFIRM CLEANUP/);
-  assert.match(stdout.output, /Press Y to quarantine, N\/Esc to go back/);
+  await waitForOutput(stdout, /! REVIEW CLEANUP/);
+  assert.match(stdout.output, /Press Enter to quarantine, Esc to return to review/);
   press(stdin, "down");
-  await waitForOutput(stdout, /Waiting for Y to quarantine or N to cancel/);
-  press(stdin, "y");
+  await waitForOutput(stdout, /Press Enter to quarantine or Esc to review/);
+  press(stdin, "enter", "\r");
 
   const result = await run;
   assert.equal(result.cleanup.count, 1);
@@ -517,6 +653,56 @@ test("interactive e2e selects with enter and quarantines confirmed rows", async 
   assert.match(stdout.output, /Quarantined 1 skills/);
   assert.equal(stdin.paused, true);
   assert.equal(stdin.isRaw, false);
+});
+
+test("interactive e2e filters with slash search before cleanup", async () => {
+  const fixture = makeFixture();
+  const stdin = new FakeStdin();
+  const stdout = new FakeStdout();
+  const run = main(
+    [
+      "--path",
+      fixture.skillsDir,
+      "--codex-dir",
+      fixture.codexDir,
+      "--claude-dir",
+      fixture.claudeDir,
+      "--claude-app-dir",
+      fixture.claudeAppDir,
+      "--opencode-dir",
+      fixture.opencodeDir,
+      "--cursor-dir",
+      fixture.cursorDir,
+      "--unused-installed-days",
+      "0",
+      "--state-dir",
+      fixture.stateDir,
+      "--full-scan",
+      "--no-omit-file",
+    ],
+    { now: NOW, stdin, stdout, stderr: { write: () => {} } },
+  );
+
+  await waitForOutput(stdout, /skillkill interactive cleanup/);
+  press(stdin, "slash", "/");
+  await waitForOutput(stdout, /Search: \/_/);
+  press(stdin, "n", "n");
+  press(stdin, "e", "e");
+  press(stdin, "v", "v");
+  press(stdin, "e", "e");
+  press(stdin, "r", "r");
+  await waitForOutput(stdout, /1 visible for \/never/);
+  press(stdin, "enter", "\r");
+  press(stdin, "space", " ");
+  press(stdin, "enter", "\r");
+  await waitForOutput(stdout, /! REVIEW CLEANUP/);
+  press(stdin, "enter", "\r");
+
+  const result = await run;
+  assert.equal(result.cleanup.count, 1);
+  assert.equal(result.cleanup.entries[0].skill, "never-used");
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), true);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), false);
 });
 
 test("interactive e2e omits current row and persists omit pattern", async () => {
@@ -766,11 +952,11 @@ test("interactive undo restores a selected cleanup run", async () => {
   await waitForOutput(stdout, /skillkill interactive undo/);
   assert.match(stdout.output, /2\s+ready/);
   press(stdin, "enter", "\r");
-  await waitForOutput(stdout, /! CONFIRM RESTORE/);
-  assert.match(stdout.output, /Press Y to restore, N\/Esc to go back/);
+  await waitForOutput(stdout, /! REVIEW RESTORE/);
+  assert.match(stdout.output, /Press Enter to restore, Esc to return to review/);
   press(stdin, "down");
-  await waitForOutput(stdout, /Waiting for Y to restore or N to cancel/);
-  press(stdin, "y");
+  await waitForOutput(stdout, /Press Enter to restore or Esc to review/);
+  press(stdin, "enter", "\r");
 
   const result = await run;
   assert.equal(result.undo.restored.length, 2);

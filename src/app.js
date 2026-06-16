@@ -4,7 +4,7 @@ import { collectSkills, scanEvidence } from "./scan.js";
 import { formatCommands, formatTable, writeCsv, writeSnapshot } from "./output.js";
 import { runInteractive, shouldRunInteractive } from "./interactive.js";
 import { runInteractiveUndo } from "./undo-interactive.js";
-import { loadOmitPatterns } from "./omit.js";
+import { appendOmitPattern, loadOmitPatterns } from "./omit.js";
 import { quarantineCandidates, restoreCleanupRun } from "./quarantine.js";
 
 function write(stream, text) {
@@ -44,6 +44,19 @@ export async function main(argv = process.argv.slice(2), io = {}) {
   if (options.help) {
     write(stdout, printHelp());
     return null;
+  }
+
+  if (options.command === "omit") {
+    const results = options.commandArgs.map((pattern) => appendOmitPattern(options, pattern));
+    for (const result of results) {
+      write(
+        stdout,
+        result.alreadyPresent
+          ? `Already omitted ${result.pattern} in ${result.file}.\n`
+          : `Omitted ${result.pattern} in ${result.file}.\n`,
+      );
+    }
+    return { omit: results };
   }
 
   if (options.undo === INTERACTIVE_UNDO) {

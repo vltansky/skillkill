@@ -54,6 +54,30 @@ function latest(items) {
   return new Date(Math.max(...dates.map((date) => date.getTime())));
 }
 
+function estimateDescriptionTokens(description) {
+  const text = String(description || "").trim();
+  if (!text) return 0;
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
+function statusFor({ cleanupCandidate, dotPrefixed, lastStrong, strongAgeDays, recentWeak, installedAgeDays }, options) {
+  if (cleanupCandidate) return "ready";
+  if (dotPrefixed) return "protected";
+  if (recentWeak) return "weak-signal";
+  if (lastStrong && strongAgeDays !== null && strongAgeDays <= options.unusedDays) return "active";
+  if (!lastStrong && installedAgeDays !== null && installedAgeDays < options.unusedInstalledDays) {
+    return "new";
+  }
+  return "kept";
+}
+
+function riskFor({ cleanupCandidate, cleanupReason, dotPrefixed, recentWeak }) {
+  if (dotPrefixed || recentWeak) return "protected";
+  if (!cleanupCandidate) return "none";
+  if (cleanupReason.startsWith("no strong use")) return "medium";
+  return "low";
+}
+
 export function formatDate(value) {
   if (!value) return "";
   return value.toISOString().replace("T", " ").slice(0, 19);
@@ -134,6 +158,8 @@ export function buildRows(skills, options) {
         skill: usage.skill,
         path: usage.path,
         skill_dir: path.dirname(usage.path),
+        description: usage.description || "",
+        description_token_cost: estimateDescriptionTokens(usage.description),
         strong_count: usage.strong.length,
         codex_strong_count: codexStrongCount,
         claude_strong_count: claudeStrongCount,
@@ -160,11 +186,30 @@ export function buildRows(skills, options) {
         cleanup_reason: cleanupReason,
         remove_command: `rm -rf ${shellQuote(path.dirname(usage.path))}`,
       };
+      row.status = statusFor(
+        {
+          cleanupCandidate,
+          dotPrefixed,
+          lastStrong,
+          strongAgeDays,
+          recentWeak,
+          installedAgeDays,
+        },
+        options,
+      );
+      row.risk = riskFor({
+        cleanupCandidate,
+        cleanupReason,
+        dotPrefixed,
+        recentWeak,
+      });
 
       const omitMatch = findOmitMatch(row, options.omitPatterns);
       if (omitMatch) {
         return {
           ...row,
+          status: "omitted",
+          risk: "protected",
           omitted: true,
           omit_pattern: omitMatch.pattern,
           omit_source: omitMatch.source,
@@ -233,6 +278,11 @@ export function payloadFor(rows, options, scanStats, now = new Date()) {
       opencodeWeak: rows.reduce((sum, row) => sum + row.opencode_weak_count, 0),
       cursorWeak: rows.reduce((sum, row) => sum + row.cursor_weak_count, 0),
       filesystemWeak: rows.reduce((sum, row) => sum + row.filesystem_weak_count, 0),
+      descriptionTokenCost: rows.reduce((sum, row) => sum + row.description_token_cost, 0),
+      candidateDescriptionTokenCost: candidates.reduce(
+        (sum, row) => sum + row.description_token_cost,
+        0,
+      ),
       scanMs: scanStats.elapsedMs,
       matchedLines: scanBuckets.reduce((sum, bucket) => sum + bucket.matchedLines, 0),
       parsedRecords: scanBuckets.reduce((sum, bucket) => sum + bucket.parsedRecords, 0),

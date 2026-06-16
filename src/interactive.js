@@ -1,6 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
 import readline from "node:readline";
+import { appendOmitPattern } from "./omit.js";
 import { quarantineCandidates } from "./quarantine.js";
 
 function write(stream, text) {
@@ -13,35 +12,46 @@ function clip(value, width) {
   return text.length > width ? `${text.slice(0, width - 1)}.` : text.padEnd(width);
 }
 
+function rowSearchText(row) {
+  return [
+    row.skill,
+    row.path,
+    row.skill_dir,
+    row.cleanup_reason,
+    row.status,
+    row.risk,
+    String(row.description_token_cost),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+}
+
 function candidateRows(rows, state = {}) {
+  const omitted = state.omitted || new Set();
+  const search = String(state.search || "").trim().toLowerCase();
+  return rows.filter(
+    (row) =>
+      row.cleanup_candidate &&
+      !omitted.has(row.skill) &&
+      (!search || rowSearchText(row).includes(search)),
+  );
+}
+
+function allCandidateRows(rows, state = {}) {
   const omitted = state.omitted || new Set();
   return rows.filter((row) => row.cleanup_candidate && !omitted.has(row.skill));
 }
 
-function appendOmitPattern(options, pattern) {
-  if (options.noOmitFile || !options.omitFile) return false;
-
-  let existing = "";
-  try {
-    existing = fs.existsSync(options.omitFile) ? fs.readFileSync(options.omitFile, "utf8") : "";
-  } catch {
-    existing = "";
-  }
-
-  const alreadyPresent = existing
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .some((line) => line === pattern);
-  if (alreadyPresent) return true;
-
-  fs.mkdirSync(path.dirname(options.omitFile), { recursive: true });
-  const needsLeadingNewline = existing.length > 0 && !existing.endsWith("\n");
-  fs.appendFileSync(options.omitFile, `${needsLeadingNewline ? "\n" : ""}${pattern}\n`);
-  return true;
-}
-
 export function shouldRunInteractive(options, io = {}) {
-  if (options.noInteractive || options.apply || options.commands || options.json || options.undo) {
+  if (
+    options.noInteractive ||
+    options.command === "list" ||
+    options.apply ||
+    options.commands ||
+    options.json ||
+    options.undo
+  ) {
     return false;
   }
   if (options.interactive) return true;
@@ -52,9 +62,11 @@ export function shouldRunInteractive(options, io = {}) {
 }
 
 export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
+  const allCandidates = allCandidateRows(rows, state);
   const candidates = candidateRows(rows, state);
   const total = rows.length;
-  const hidden = Math.max(0, total - candidates.length);
+  const protectedHidden = Math.max(0, total - allCandidates.length);
+  const searchHidden = Math.max(0, allCandidates.length - candidates.length);
   const selected = state.selected || new Set();
   const omitted = state.omitted || new Set();
   const cursor = Math.min(Math.max(0, state.cursor || 0), Math.max(0, candidates.length - 1));
@@ -66,18 +78,30 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     Math.max(0, candidates.length - visible),
   );
   const end = Math.min(candidates.length, start + visible);
+  const selectedVisible = candidates.filter((row) => selected.has(row.skill)).length;
+  const statusWidth = 9;
+  const riskWidth = 9;
+  const tokenWidth = 6;
   const nameWidth = Math.min(30, Math.max(18, Math.floor(width * 0.24)));
   const reasonWidth = Math.min(38, Math.max(20, Math.floor(width * 0.32)));
   const dateWidth = 19;
-  const pathWidth = Math.max(14, width - nameWidth - reasonWidth - dateWidth - 16);
+  const pathWidth = Math.max(
+    14,
+    width - nameWidth - reasonWidth - dateWidth - statusWidth - riskWidth - tokenWidth - 21,
+  );
+  const search = String(state.search || "");
 
   const lines = [
     "skillkill interactive cleanup",
-    `${candidates.length} cleanup candidates, ${selected.size} selected${omitted.size ? `, ${omitted.size} omitted this run` : ""}${hidden ? `, ${hidden} hidden as protected/recent/omitted` : ""}`,
+    `${allCandidates.length} cleanup candidates, ${selectedVisible} selected${search ? `, ${candidates.length} visible for /${search}` : ""}${omitted.size ? `, ${omitted.size} omitted this run` : ""}${searchHidden ? `, ${searchHidden} hidden by search` : ""}${protectedHidden ? `, ${protectedHidden} protected/recent/omitted` : ""}`,
     "",
-    `   sel ${clip("skill", nameWidth)} ${clip("reason", reasonWidth)} ${clip("last strong use", dateWidth)} ${clip("path", pathWidth)}`,
-    `   --- ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(pathWidth)}`,
+    `   sel ${clip("status", statusWidth)} ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip("skill", nameWidth)} ${clip("reason", reasonWidth)} ${clip("last strong use", dateWidth)} ${clip("path", pathWidth)}`,
+    `   --- ${"-".repeat(statusWidth)} ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(pathWidth)}`,
   ];
+
+  if (state.searching || search) {
+    lines.push(`Search: /${search}${state.searching ? "_" : ""}`);
+  }
 
   if (candidates.length === 0) {
     lines.push("", "No cleanup candidates.");
@@ -87,17 +111,19 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
       const active = index === cursor ? ">" : " ";
       const mark = selected.has(row.skill) ? "[x]" : "[ ]";
       lines.push(
-        `${active} ${mark} ${clip(row.skill, nameWidth)} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_strong_read || "-", dateWidth)} ${clip(row.path, pathWidth)}`,
+        `${active} ${mark} ${clip(row.status, statusWidth)} ${clip(row.risk, riskWidth)} ${clip(row.description_token_cost, tokenWidth)} ${clip(row.skill, nameWidth)} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_strong_read || "-", dateWidth)} ${clip(row.path, pathWidth)}`,
       );
     }
   }
 
   if (state.confirming) {
+    const selectedRows = candidates.filter((row) => selected.has(row.skill));
     lines.push(
       "",
-      "! CONFIRM CLEANUP",
-      `  ${selected.size} selected skills will be moved to quarantine.`,
-      "  Press Y to quarantine, N/Esc to go back.",
+      "! REVIEW CLEANUP",
+      `  ${selectedRows.length} selected skills will be moved to quarantine.`,
+      "  This is undoable with skillkill --undo.",
+      "  Press Enter to quarantine, Esc to return to review.",
       state.message ? `  ${state.message}` : "",
     );
   } else if (state.message) {
@@ -108,8 +134,10 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
 
   lines.push(
     state.confirming
-      ? "Confirm: y quarantine, n/esc cancel"
-      : "Keys: up/down or j/k move, space/x select, a all, o omit, enter quarantine, q quit",
+      ? "Confirm: enter quarantine, esc review"
+      : state.searching
+        ? "Search: type to filter, enter keep, esc clear, backspace delete"
+        : "Keys: / search, up/down or j/k move, space/x select, a all, o omit, enter review, q quit",
   );
   lines.push("Use --no-interactive for the static table. Cleanup is quarantine-only and undoable.");
   return `${lines.join("\n")}\n`;
@@ -166,6 +194,8 @@ export async function runInteractive(rows, payload, options, io = {}) {
     selected: new Set(),
     omitted: new Set(),
     confirming: false,
+    searching: false,
+    search: "",
     message: "",
   };
   const wasRaw = stdin.isRaw;
@@ -205,6 +235,11 @@ export async function runInteractive(rows, payload, options, io = {}) {
       return candidateRows(rows, state).filter((row) => state.selected.has(row.skill));
     }
 
+    function clampCursor() {
+      const candidates = candidateRows(rows, state);
+      state.cursor = Math.min(Math.max(0, state.cursor), Math.max(0, candidates.length - 1));
+    }
+
     function toggleCurrent() {
       const row = candidateRows(rows, state)[state.cursor];
       if (!row) return;
@@ -218,8 +253,8 @@ export async function runInteractive(rows, payload, options, io = {}) {
 
     function toggleAll() {
       const candidates = candidateRows(rows, state);
-      if (state.selected.size === candidates.length) {
-        state.selected.clear();
+      if (candidates.length > 0 && candidates.every((row) => state.selected.has(row.skill))) {
+        for (const row of candidates) state.selected.delete(row.skill);
       } else {
         for (const row of candidates) state.selected.add(row.skill);
       }
@@ -240,7 +275,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
       state.selected.delete(row.skill);
       const saved = appendOmitPattern(options, row.skill);
       state.cursor = Math.min(state.cursor, Math.max(0, candidateRows(rows, state).length - 1));
-      state.message = saved
+      state.message = saved.saved
         ? `Omitted ${row.skill} and saved to ${options.omitFile}.`
         : `Omitted ${row.skill} for this run.`;
     }
@@ -262,7 +297,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
         }
 
         if (state.confirming) {
-          if (key.name === "y") {
+          if (key.name === "return" || key.name === "enter" || key.name === "y") {
             applySelected();
             return;
           }
@@ -272,7 +307,37 @@ export async function runInteractive(rows, payload, options, io = {}) {
             render(stdout, rows, state);
             return;
           }
-          state.message = "Waiting for Y to quarantine or N to cancel.";
+          state.message = "Press Enter to quarantine or Esc to review.";
+          render(stdout, rows, state);
+          return;
+        }
+
+        if (state.searching) {
+          if (key.name === "escape") {
+            state.search = "";
+            state.searching = false;
+            state.message = "Search cleared.";
+            clampCursor();
+          } else if (key.name === "return" || key.name === "enter") {
+            state.searching = false;
+            state.message = "";
+          } else if (key.name === "backspace" || key.name === "delete") {
+            state.search = String(state.search || "").slice(0, -1);
+            state.message = "";
+            clampCursor();
+          } else if (_str && _str.length === 1 && !key.ctrl && !key.meta) {
+            state.search = `${state.search || ""}${_str}`;
+            state.message = "";
+            clampCursor();
+          }
+          render(stdout, rows, state);
+          return;
+        }
+
+        if (key.name === "escape" && state.search) {
+          state.search = "";
+          state.message = "Search cleared.";
+          clampCursor();
           render(stdout, rows, state);
           return;
         }
@@ -281,13 +346,16 @@ export async function runInteractive(rows, payload, options, io = {}) {
           finish({ payload, interactive: true, cancelled: true });
           return;
         }
-        if (key.name === "up" || key.name === "k") move(-1);
+        if (_str === "/" || key.name === "slash") {
+          state.searching = true;
+          state.message = "";
+        } else if (key.name === "up" || key.name === "k") move(-1);
         else if (key.name === "down" || key.name === "j") move(1);
         else if (key.name === "space" || key.name === "x") toggleCurrent();
         else if (key.name === "a") toggleAll();
         else if (key.name === "o") omitCurrent();
         else if (key.name === "return" || key.name === "enter") {
-          if (state.selected.size === 0) {
+          if (selectedRows().length === 0) {
             state.message = "Select at least one skill first.";
           } else {
             state.confirming = true;

@@ -45,17 +45,18 @@ native attribution.
 ## Safety Model
 
 - Default runs do not move files.
-- Interactive cleanup requires selecting rows, pressing `enter`, then confirming
-  with `Y`.
+- Interactive cleanup requires selecting rows, pressing `enter` to review, then
+  pressing `enter` again to move them to quarantine.
 - `--apply` moves candidates into `~/.local/state/skillkill/runs/...`; it does
   not permanently delete them.
 - If a quarantined skill is tracked by `npx skills`, matching Vercel lock
   entries are removed from `~/.agents/.skill-lock.json`,
   `$XDG_STATE_HOME/skills/.skill-lock.json`, or an existing project
   `skills-lock.json`, then saved in the undo manifest.
-- `skillkill --undo` opens an interactive restore picker.
-- `skillkill --undo latest`, `--undo RUN_ID`, and `--undo PATH` restore directly
-  for scripts, including any Vercel lock entries saved by cleanup.
+- `skillkill --undo` or `skillkill undo` opens an interactive restore picker.
+- `skillkill --undo latest`, `skillkill undo latest`, `--undo RUN_ID`, and
+  `--undo PATH` restore directly for scripts, including any Vercel lock entries
+  saved by cleanup.
 - `--omit`, `--whitelist`, and `~/.config/skillkill/omit` keep known-good skills
   out of cleanup candidates.
 
@@ -83,8 +84,10 @@ skillkill --evidence-dir ~/.continue
 # Keep known-good skills out of cleanup candidates
 skillkill --omit simplify
 skillkill --omit "ck-*"
+skillkill omit simplify
 
 # Static output for scripts and review artifacts
+skillkill list --json
 skillkill --no-interactive
 skillkill --commands
 skillkill --json
@@ -92,21 +95,28 @@ skillkill --csv /tmp/skillkill.csv
 skillkill --snapshot ~/.codex/skillkill/snapshots.jsonl
 
 # Cleanup and restore
+skillkill cleanup --apply
 skillkill --apply
 skillkill --undo
 skillkill --undo latest
+skillkill undo latest
 ```
+
+Rows include `status`, `risk`, and `description_token_cost`. The token cost is a
+rough estimate from the skill `description` frontmatter field, useful for
+spotting bulky skill menus before removing anything.
 
 ## Interactive Keys
 
 | Key | Action |
 | --- | --- |
 | `up` / `down` or `j` / `k` | Move through rows |
+| `/` | Search visible cleanup candidates |
 | `space` or `x` | Select or unselect the current skill |
 | `a` | Toggle all cleanup candidates |
 | `o` | Omit the current skill |
-| `enter` | Open the cleanup confirmation |
-| `y` | Confirm cleanup or restore |
+| `enter` | Open review, keep search, or confirm cleanup/restore |
+| `y` | Confirm cleanup or restore shortcut |
 | `n` / `esc` | Cancel confirmation |
 | `q` | Quit |
 
@@ -124,10 +134,11 @@ Interactive omit appends the skill name to `~/.config/skillkill/omit` unless
 | `--unused-installed-days N` | Propose never-used skills after install age |
 | `--protect-weak-days N` | Defer cleanup after recent weak evidence |
 | `--omit PATTERN`, `--whitelist PATTERN` | Keep matching skills out of cleanup candidates |
+| `skillkill omit PATTERN` | Persist an omit pattern |
 | `--no-interactive` | Print the static table |
 | `--json`, `--csv PATH`, `--snapshot PATH` | Machine-readable or persistent outputs |
-| `--apply` | Move cleanup candidates to quarantine |
-| `--undo [latest|RUN_ID|PATH]` | Restore a quarantine run |
+| `cleanup --apply`, `--apply` | Move cleanup candidates to quarantine |
+| `undo [latest|RUN_ID|PATH]`, `--undo [latest|RUN_ID|PATH]` | Restore a quarantine run |
 | `--full-scan` | Parse every JSONL line instead of prefiltering |
 
 Run `skillkill --help` for the complete command reference.

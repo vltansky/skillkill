@@ -2,6 +2,8 @@ import os from "node:os";
 import path from "node:path";
 
 export const DEFAULT_OPTIONS = {
+  command: "",
+  commandArgs: [],
   skillsDir: "~/.agents/skills",
   codexDir: "~/.codex",
   claudeDir: "~/.claude",
@@ -30,6 +32,7 @@ export const DEFAULT_OPTIONS = {
 };
 
 export const INTERACTIVE_UNDO = "__interactive_undo__";
+const COMMANDS = new Set(["list", "cleanup", "omit", "undo"]);
 
 export function expandHome(value, home = os.homedir()) {
   if (!value) return value;
@@ -60,7 +63,13 @@ function readNumber(argv, index, arg) {
 }
 
 export function printHelp() {
-  return `Usage: skillkill [options]
+  return `Usage: skillkill [command] [options]
+
+Commands:
+  list                           Scan skills and print the normal report
+  cleanup                        Scan skills, optionally with --apply
+  omit <skill-or-pattern>         Add persistent omit patterns
+  undo [latest|RUN_ID|PATH]       Restore a previous cleanup run
 
 Options:
   --path PATH                     Skills directory to scan (default: ~/.agents/skills)
@@ -96,6 +105,8 @@ Options:
 
 Default behavior is interactive when stdin/stdout are terminals, otherwise static dry-run.
 --apply writes an undo manifest; restore interactively with --undo or directly with --undo latest.
+Direct forms are also available: skillkill list --json, skillkill cleanup --apply,
+skillkill omit simplify, skillkill undo latest.
 Command aliases: skill-kill, skill-cleanup, skill-prune.
 `;
 }
@@ -103,13 +114,22 @@ Command aliases: skill-kill, skill-cleanup, skill-prune.
 export function parseArgs(argv) {
   const options = {
     ...DEFAULT_OPTIONS,
+    commandArgs: [...DEFAULT_OPTIONS.commandArgs],
     evidenceDirs: [...DEFAULT_OPTIONS.evidenceDirs],
     omitPatterns: [...DEFAULT_OPTIONS.omitPatterns],
   };
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--path" || arg === "--skills-dir") {
+    if (!arg.startsWith("-")) {
+      if (!options.command && COMMANDS.has(arg)) {
+        options.command = arg;
+      } else if (options.command === "omit" || options.command === "undo") {
+        options.commandArgs.push(arg);
+      } else {
+        throw new Error(`Unknown command or option: ${arg}`);
+      }
+    } else if (arg === "--path" || arg === "--skills-dir") {
       options.skillsDir = readNext(argv, i, arg);
       i += 1;
     } else if (arg === "--source") {
@@ -185,6 +205,30 @@ export function parseArgs(argv) {
     }
   }
 
+  if (options.command === "undo") {
+    if (options.undo && options.commandArgs.length > 0) {
+      throw new Error("skillkill undo cannot be combined with --undo");
+    }
+    if (options.commandArgs.length > 1) {
+      throw new Error("skillkill undo accepts at most one target");
+    }
+    options.undo = options.commandArgs[0] || options.undo || INTERACTIVE_UNDO;
+  }
+  if (options.command === "omit") {
+    if (options.commandArgs.length === 0) {
+      throw new Error("skillkill omit requires at least one skill or pattern");
+    }
+    if (options.noOmitFile) {
+      throw new Error("skillkill omit writes to the omit file; remove --no-omit-file");
+    }
+    if (options.apply || options.undo || options.commands || options.json || options.csv || options.snapshot) {
+      throw new Error("skillkill omit cannot be combined with scan/output/apply options");
+    }
+  }
+  if (options.command === "list" && options.apply) {
+    throw new Error("skillkill list cannot be combined with --apply");
+  }
+
   if (!["codex", "claude", "opencode", "cursor", "filesystem", "all"].includes(options.source)) {
     throw new Error("--source must be codex, claude, opencode, cursor, filesystem, or all");
   }
@@ -206,6 +250,7 @@ export function parseArgs(argv) {
 
   return {
     ...options,
+    commandArgs: options.commandArgs,
     skillsDir: path.resolve(expandHome(options.skillsDir)),
     codexDir: path.resolve(expandHome(options.codexDir)),
     claudeDir: path.resolve(expandHome(options.claudeDir)),

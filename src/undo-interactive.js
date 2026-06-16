@@ -58,9 +58,9 @@ export function renderInteractiveUndoScreen(runs, state = {}, dimensions = {}) {
   if (state.confirming && selectedRun) {
     lines.push(
       "",
-      "! CONFIRM RESTORE",
+      "! REVIEW RESTORE",
       `  ${selectedRun.entries.length} skills will be restored from ${selectedRun.id}.`,
-      "  Press Y to restore, N/Esc to go back.",
+      "  Press Enter to restore, Esc to return to review.",
       state.message ? `  ${state.message}` : "",
     );
   } else if (state.message) {
@@ -71,7 +71,7 @@ export function renderInteractiveUndoScreen(runs, state = {}, dimensions = {}) {
 
   lines.push(
     state.confirming
-      ? "Confirm: y restore, n/esc cancel"
+      ? "Confirm: enter restore, esc review"
       : "Keys: up/down or j/k move, enter restore, q quit",
   );
   lines.push("Direct restore remains available with --undo latest, --undo RUN_ID, or --undo PATH.");
@@ -162,7 +162,7 @@ export async function runInteractiveUndo(options, io = {}) {
         }
 
         if (state.confirming) {
-          if (key.name === "y") {
+          if (key.name === "return" || key.name === "enter" || key.name === "y") {
             restoreCurrent();
             return;
           }
@@ -172,7 +172,7 @@ export async function runInteractiveUndo(options, io = {}) {
             render(stdout, runs, state);
             return;
           }
-          state.message = "Waiting for Y to restore or N to cancel.";
+          state.message = "Press Enter to restore or Esc to review.";
           render(stdout, runs, state);
           return;
         }
