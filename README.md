@@ -1,11 +1,59 @@
 # skillkill
 
-`skillkill` is a local CLI for auditing agent skills and cleaning up stale
-or never-used skill directories.
+Audit local agent skills, find stale or never-used installs, and clean them up
+through an undoable quarantine.
 
-The first design goal is boring safety: the default command opens an
-interactive terminal review in a real TTY, cleanup is explicit, and applied
-cleanup can be restored from a manifest.
+The design goal is boring safety: preview first, explicit cleanup, and a restore
+path if something was moved by mistake.
+
+## Quick Start
+
+Run without installing:
+
+```bash
+npx skillkill
+```
+
+Or install globally:
+
+```bash
+npm install --global skillkill
+skillkill
+```
+
+In a real terminal, `skillkill` opens an interactive review. When output is
+piped, or when `--no-interactive`, `--json`, `--csv`, or `--snapshot` is used,
+it prints static output instead.
+
+## What It Does
+
+`skillkill` scans installed skill directories, then checks local agent history
+for evidence that each skill was actually used.
+
+- Default skill root: `~/.agents/skills`
+- Strong evidence: native skill-invocation records from supported tools
+- Weak evidence: raw `SKILL.md` path mentions in supported local stores
+- Cleanup candidates: stale strong usage or never-used skills past the age
+  threshold
+- Protected rows: dot-prefixed system skills, recent strong use, recent weak
+  evidence, and omitted skills
+
+Weak evidence does not prove a skill was invoked, but recent weak evidence keeps
+a skill out of cleanup candidates because it may indicate use in tools without
+native attribution.
+
+## Safety Model
+
+- Default runs do not move files.
+- Interactive cleanup requires selecting rows, pressing `enter`, then confirming
+  with `Y`.
+- `--apply` moves candidates into `~/.local/state/skillkill/runs/...`; it does
+  not permanently delete them.
+- `skillkill --undo` opens an interactive restore picker.
+- `skillkill --undo latest`, `--undo RUN_ID`, and `--undo PATH` restore directly
+  for scripts.
+- `--omit`, `--whitelist`, and `~/.config/skillkill/omit` keep known-good skills
+  out of cleanup candidates.
 
 ## Docs
 
@@ -15,46 +63,70 @@ cleanup can be restored from a manifest.
 - [Research: tools like `npx npkill`](docs/research/npkill-like-tools.md)
 - [Research: skill invocation signals](docs/research/skill-invocation-signals.md)
 
-## Intended Command Shape
+## Usage
 
 ```bash
+# Interactive review
 npx skillkill
 skillkill
+
+# Scan a different skill root or evidence source
 skillkill --path ~/.agents/skills
 skillkill --source opencode
 skillkill --source cursor
 skillkill --evidence-dir ~/.continue
+
+# Keep known-good skills out of cleanup candidates
 skillkill --omit simplify
+skillkill --omit "ck-*"
+
+# Static output for scripts and review artifacts
 skillkill --no-interactive
 skillkill --commands
 skillkill --json
 skillkill --csv /tmp/skillkill.csv
 skillkill --snapshot ~/.codex/skillkill/snapshots.jsonl
+
+# Cleanup and restore
 skillkill --apply
 skillkill --undo
 skillkill --undo latest
 ```
 
-Default behavior is interactive when stdin/stdout are terminals. Use arrow keys
-or `j`/`k` to move, `space` or `x` to select, `a` to toggle all candidates, `o`
-to omit the current skill, and `enter` then `y` to quarantine selected skills.
+## Interactive Keys
+
+| Key | Action |
+| --- | --- |
+| `up` / `down` or `j` / `k` | Move through rows |
+| `space` or `x` | Select or unselect the current skill |
+| `a` | Toggle all cleanup candidates |
+| `o` | Omit the current skill |
+| `enter` | Open the cleanup confirmation |
+| `y` | Confirm cleanup or restore |
+| `n` / `esc` | Cancel confirmation |
+| `q` | Quit |
+
 Interactive omit appends the skill name to `~/.config/skillkill/omit` unless
-`--no-omit-file` is set, in which case the omit is only for the current run.
-After `enter`, the footer switches to a confirmation prompt: `Y` quarantines
-the selected skills, while `N` or `Esc` returns to review.
+`--no-omit-file` is set, in which case the omit lasts only for the current run.
 
-When output is piped, or when `--no-interactive`, `--commands`, `--json`,
-`--csv`, or `--snapshot` is used, `skillkill` prints static output instead.
-`--apply` moves all candidates into a local quarantine run and writes an undo
-manifest. `--undo` opens an interactive restore picker. `--undo latest`,
-`--undo RUN_ID`, and `--undo PATH` restore directly for scripts.
+## Core Options
 
-`skillkill` scans Codex, Claude, OpenCode, and Cursor local stores by default.
-Codex injected skill blocks, Claude `attributionSkill` records, and structured
-OpenCode `read` tool parts that target `SKILL.md` count as strong evidence.
-OpenCode/Cursor path mentions, extra `--evidence-dir` roots, and raw path
-mentions count as weak evidence. Recent weak evidence defers cleanup by default
-because it may indicate use in a provider without native skill attribution.
+| Option | Purpose |
+| --- | --- |
+| `--path PATH`, `--skills-dir PATH` | Skills directory to scan |
+| `--source codex|claude|opencode|cursor|filesystem|all` | Evidence source to scan |
+| `--evidence-dir PATH` | Extra transcript or log directory for weak path evidence |
+| `--unused-days N` | Mark skills stale after last strong use |
+| `--unused-installed-days N` | Propose never-used skills after install age |
+| `--protect-weak-days N` | Defer cleanup after recent weak evidence |
+| `--omit PATTERN`, `--whitelist PATTERN` | Keep matching skills out of cleanup candidates |
+| `--no-interactive` | Print the static table |
+| `--json`, `--csv PATH`, `--snapshot PATH` | Machine-readable or persistent outputs |
+| `--apply` | Move cleanup candidates to quarantine |
+| `--undo [latest|RUN_ID|PATH]` | Restore a quarantine run |
+| `--full-scan` | Parse every JSONL line instead of prefiltering |
+
+Run `skillkill --help` for the complete command reference.
 
 ## Supported Tools
 
