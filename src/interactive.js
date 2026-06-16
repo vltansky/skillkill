@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import readline from "node:readline";
 import { quarantineCandidates } from "./quarantine.js";
 
@@ -11,8 +13,31 @@ function clip(value, width) {
   return text.length > width ? `${text.slice(0, width - 1)}.` : text.padEnd(width);
 }
 
-function candidateRows(rows) {
-  return rows.filter((row) => row.cleanup_candidate);
+function candidateRows(rows, state = {}) {
+  const omitted = state.omitted || new Set();
+  return rows.filter((row) => row.cleanup_candidate && !omitted.has(row.skill));
+}
+
+function appendOmitPattern(options, pattern) {
+  if (options.noOmitFile || !options.omitFile) return false;
+
+  let existing = "";
+  try {
+    existing = fs.existsSync(options.omitFile) ? fs.readFileSync(options.omitFile, "utf8") : "";
+  } catch {
+    existing = "";
+  }
+
+  const alreadyPresent = existing
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .some((line) => line === pattern);
+  if (alreadyPresent) return true;
+
+  fs.mkdirSync(path.dirname(options.omitFile), { recursive: true });
+  const needsLeadingNewline = existing.length > 0 && !existing.endsWith("\n");
+  fs.appendFileSync(options.omitFile, `${needsLeadingNewline ? "\n" : ""}${pattern}\n`);
+  return true;
 }
 
 export function shouldRunInteractive(options, io = {}) {
@@ -27,10 +52,11 @@ export function shouldRunInteractive(options, io = {}) {
 }
 
 export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
-  const candidates = candidateRows(rows);
+  const candidates = candidateRows(rows, state);
   const total = rows.length;
   const hidden = Math.max(0, total - candidates.length);
   const selected = state.selected || new Set();
+  const omitted = state.omitted || new Set();
   const cursor = Math.min(Math.max(0, state.cursor || 0), Math.max(0, candidates.length - 1));
   const height = Math.max(10, dimensions.rows || 24);
   const width = Math.max(72, dimensions.columns || 100);
@@ -47,7 +73,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
 
   const lines = [
     "skillkill interactive cleanup",
-    `${candidates.length} cleanup candidates, ${selected.size} selected${hidden ? `, ${hidden} hidden as protected/recent/omitted` : ""}`,
+    `${candidates.length} cleanup candidates, ${selected.size} selected${omitted.size ? `, ${omitted.size} omitted this run` : ""}${hidden ? `, ${hidden} hidden as protected/recent/omitted` : ""}`,
     "",
     `   sel ${clip("skill", nameWidth)} ${clip("reason", reasonWidth)} ${clip("last strong use", dateWidth)} ${clip("path", pathWidth)}`,
     `   --- ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(dateWidth)} ${"-".repeat(pathWidth)}`,
@@ -77,7 +103,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     lines.push("");
   }
 
-  lines.push("Keys: up/down or j/k move, space/x select, a all, enter quarantine, q quit");
+  lines.push("Keys: up/down or j/k move, space/x select, a all, o omit, enter quarantine, q quit");
   lines.push("Use --no-interactive for the static table. Cleanup is quarantine-only and undoable.");
   return `${lines.join("\n")}\n`;
 }
@@ -109,7 +135,6 @@ function printResult(stdout, result) {
 export async function runInteractive(rows, payload, options, io = {}) {
   const stdin = io.stdin || process.stdin;
   const stdout = io.stdout || process.stdout;
-  const candidates = candidateRows(rows);
 
   if (!stdin.isTTY || !stdout.isTTY || typeof stdin.setRawMode !== "function") {
     if (options.interactive) {
@@ -118,7 +143,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
     return null;
   }
 
-  if (candidates.length === 0) {
+  if (candidateRows(rows).length === 0) {
     write(stdout, "No cleanup candidates.\n");
     return { payload, interactive: true, cleanup: { count: 0, manifest: "", entries: [] } };
   }
@@ -126,6 +151,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
   const state = {
     cursor: 0,
     selected: new Set(),
+    omitted: new Set(),
     confirming: false,
     message: "",
   };
@@ -163,11 +189,11 @@ export async function runInteractive(rows, payload, options, io = {}) {
     }
 
     function selectedRows() {
-      return candidates.filter((row) => state.selected.has(row.skill));
+      return candidateRows(rows, state).filter((row) => state.selected.has(row.skill));
     }
 
     function toggleCurrent() {
-      const row = candidates[state.cursor];
+      const row = candidateRows(rows, state)[state.cursor];
       if (!row) return;
       if (state.selected.has(row.skill)) {
         state.selected.delete(row.skill);
@@ -178,6 +204,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
     }
 
     function toggleAll() {
+      const candidates = candidateRows(rows, state);
       if (state.selected.size === candidates.length) {
         state.selected.clear();
       } else {
@@ -187,8 +214,22 @@ export async function runInteractive(rows, payload, options, io = {}) {
     }
 
     function move(delta) {
+      const candidates = candidateRows(rows, state);
       state.cursor = Math.min(Math.max(0, state.cursor + delta), candidates.length - 1);
       state.message = "";
+    }
+
+    function omitCurrent() {
+      const candidates = candidateRows(rows, state);
+      const row = candidates[state.cursor];
+      if (!row) return;
+      state.omitted.add(row.skill);
+      state.selected.delete(row.skill);
+      const saved = appendOmitPattern(options, row.skill);
+      state.cursor = Math.min(state.cursor, Math.max(0, candidateRows(rows, state).length - 1));
+      state.message = saved
+        ? `Omitted ${row.skill} and saved to ${options.omitFile}.`
+        : `Omitted ${row.skill} for this run.`;
     }
 
     function applySelected() {
@@ -230,6 +271,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
         else if (key.name === "down" || key.name === "j") move(1);
         else if (key.name === "space" || key.name === "x") toggleCurrent();
         else if (key.name === "a") toggleAll();
+        else if (key.name === "o") omitCurrent();
         else if (key.name === "return") {
           if (state.selected.size === 0) {
             state.message = "Select at least one skill first.";

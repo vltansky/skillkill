@@ -372,8 +372,18 @@ test("renders interactive cleanup candidates", async () => {
   assert.match(screen, /skillkill interactive cleanup/);
   assert.match(screen, /2 cleanup candidates/);
   assert.match(screen, /\[x\] stale-skill/);
-  assert.match(screen, /space\/x select/);
+  assert.match(screen, /o omit/);
   assert.doesNotMatch(screen, /recent-skill/);
+
+  const omittedScreen = renderInteractiveScreen(
+    rows,
+    { cursor: 0, selected: new Set(), omitted: new Set(["stale-skill"]) },
+    { columns: 120, rows: 24 },
+  );
+
+  assert.match(omittedScreen, /1 cleanup candidates/);
+  assert.match(omittedScreen, /1 omitted this run/);
+  assert.doesNotMatch(omittedScreen, /\[.\] stale-skill/);
 });
 
 test("interactive mode defaults only for real terminals", () => {

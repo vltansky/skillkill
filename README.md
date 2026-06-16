@@ -35,8 +35,10 @@ skillkill --undo latest
 ```
 
 Default behavior is interactive when stdin/stdout are terminals. Use arrow keys
-or `j`/`k` to move, `space` or `x` to select, `a` to toggle all candidates, and
-`enter` then `y` to quarantine selected skills.
+or `j`/`k` to move, `space` or `x` to select, `a` to toggle all candidates, `o`
+to omit the current skill, and `enter` then `y` to quarantine selected skills.
+Interactive omit appends the skill name to `~/.config/skillkill/omit` unless
+`--no-omit-file` is set, in which case the omit is only for the current run.
 
 When output is piped, or when `--no-interactive`, `--commands`, `--json`,
 `--csv`, or `--snapshot` is used, `skillkill` prints static output instead.
