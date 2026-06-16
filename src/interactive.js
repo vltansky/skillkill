@@ -54,14 +54,19 @@ function selectedCandidateRows(rows, state = {}) {
   return candidateRows(rows, state).filter((row) => selected.has(rowKey(row)));
 }
 
-function tokenImpact(rows, picked, state = {}) {
+function tokenImpact(picked, state = {}) {
   const removedTokens = picked.reduce((sum, row) => sum + row.description_token_cost, 0);
-  const recentActivitySignals = rows.reduce((sum, row) => sum + row.recent_signal_count, 0);
+  const selectedRecentVerifiedUses = picked.reduce((sum, row) => sum + row.recent_strong_count, 0);
+  const selectedRecentPathMentions = picked.reduce((sum, row) => sum + row.recent_weak_count, 0);
   return {
     removedTokens,
-    recentActivitySignals,
+    selectedRecentVerifiedUses,
+    selectedRecentPathMentions,
     savingsDays: state.savingsDays ?? 30,
-    estimatedRepeatedSavings: removedTokens * recentActivitySignals,
+    observedSelectedUseTokens: picked.reduce(
+      (sum, row) => sum + row.description_token_cost * row.recent_strong_count,
+      0,
+    ),
   };
 }
 
@@ -180,7 +185,7 @@ function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
   const visibleSkills = Math.max(1, height - 13);
   const shown = picked.slice(0, visibleSkills);
   const hidden = Math.max(0, picked.length - shown.length);
-  const impact = tokenImpact(rows, picked, state);
+  const impact = tokenImpact(picked, state);
   const skillWidth = Math.max(24, Math.min(48, Math.floor(width * 0.4)));
   const reasonWidth = Math.max(20, width - skillWidth - 28);
 
@@ -207,9 +212,10 @@ function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
   lines.push(
     "",
     color.header("Token effect:"),
-    `  Removed description tokens: ${color.token(impact.removedTokens)}`,
-    `  Recent activity baseline: ${color.info(impact.recentActivitySignals)} signals/sessions in last ${impact.savingsDays} days`,
-    `  Estimated repeated prompt savings: ${color.good(impact.estimatedRepeatedSavings)} tokens`,
+    `  Removed description tokens: ${color.token(impact.removedTokens)} per future skill-catalog load`,
+    `  Selected verified uses in last ${impact.savingsDays} days: ${color.info(impact.selectedRecentVerifiedUses)}`,
+    `  Observed selected-use prompt cost: ${color.token(impact.observedSelectedUseTokens)} tokens`,
+    `  Selected path mentions in window: ${color.dim(impact.selectedRecentPathMentions)} (not counted as verified use)`,
     "",
     `${color.good("Press Enter to quarantine.")} ${color.dim("Press Esc to return to review.")}`,
     state.message ? color.warn(state.message) : "",

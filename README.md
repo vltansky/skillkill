@@ -114,9 +114,10 @@ is a rough estimate from the skill `description` frontmatter field.
 `used_14d_tokens` multiplies that cost by verified uses in the last 14 days.
 
 The interactive confirmation screen shows the selected skills, description
-tokens removed, and an estimated repeated prompt saving. That estimate multiplies
-removed description tokens by recent skill activity signals/sessions from the
-last `--savings-days` window.
+tokens removed per future skill-catalog load, and observed token cost from
+recent verified uses of the selected skills. It does not estimate session-wide
+savings because the scanner tracks evidence records, not distinct agent
+sessions.
 
 ## Interactive Keys
 

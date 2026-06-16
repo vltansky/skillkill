@@ -706,9 +706,10 @@ test("renders interactive cleanup candidates", async () => {
   assert.match(confirmScreen, /skillkill confirm cleanup/);
   assert.match(confirmScreen, /You are going to remove 1 skills from active use/);
   assert.match(confirmScreen, /stale-skill/);
-  assert.match(confirmScreen, /Removed description tokens: \d+/);
-  assert.match(confirmScreen, /Recent activity baseline: 2 signals\/sessions in last 30 days/);
-  assert.match(confirmScreen, /Estimated repeated prompt savings: \d+ tokens/);
+  assert.match(confirmScreen, /Removed description tokens: \d+ per future skill-catalog load/);
+  assert.match(confirmScreen, /Selected verified uses in last 30 days: 0/);
+  assert.match(confirmScreen, /Observed selected-use prompt cost: 0 tokens/);
+  assert.match(confirmScreen, /Selected path mentions in window: 0 \(not counted as verified use\)/);
   assert.match(confirmScreen, /Press Enter to quarantine/);
 });
 
@@ -780,7 +781,8 @@ test("interactive e2e selects with enter and quarantines confirmed rows", async 
   press(stdin, "enter", "\r");
   await waitForOutput(stdout, /skillkill confirm cleanup/);
   assert.match(stdout.output, /You are going to remove 1 skills from active use/);
-  assert.match(stdout.output, /Estimated repeated prompt savings:/);
+  assert.match(stdout.output, /Removed description tokens: 11 per future skill-catalog load/);
+  assert.match(stdout.output, /Observed selected-use prompt cost: 0 tokens/);
   press(stdin, "down");
   await waitForOutput(stdout, /Press Enter to quarantine or Esc to review/);
   press(stdin, "enter", "\r");
