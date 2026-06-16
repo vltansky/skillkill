@@ -15,8 +15,10 @@ function clip(value, width) {
 function rowSearchText(row) {
   return [
     row.skill,
+    row.install_root,
     row.path,
     row.skill_dir,
+    row.link_target,
     row.cleanup_reason,
     row.status,
     row.risk,
@@ -43,9 +45,13 @@ function allCandidateRows(rows, state = {}) {
   return rows.filter((row) => row.cleanup_candidate && !omitted.has(row.skill));
 }
 
+function rowKey(row) {
+  return row.id || row.skill;
+}
+
 function selectedCandidateRows(rows, state = {}) {
   const selected = state.selected || new Set();
-  return candidateRows(rows, state).filter((row) => selected.has(row.skill));
+  return candidateRows(rows, state).filter((row) => selected.has(rowKey(row)));
 }
 
 function tokenImpact(rows, picked, state = {}) {
@@ -98,7 +104,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     Math.max(0, candidates.length - visible),
   );
   const end = Math.min(candidates.length, start + visible);
-  const selectedVisible = candidates.filter((row) => selected.has(row.skill)).length;
+  const selectedVisible = candidates.filter((row) => selected.has(rowKey(row))).length;
   const statusWidth = 9;
   const riskWidth = 9;
   const tokenWidth = 6;
@@ -129,7 +135,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     for (let index = start; index < end; index += 1) {
       const row = candidates[index];
       const active = index === cursor ? ">" : " ";
-      const mark = selected.has(row.skill) ? "[x]" : "[ ]";
+      const mark = selected.has(rowKey(row)) ? "[x]" : "[ ]";
       lines.push(
         `${active} ${mark} ${clip(row.status, statusWidth)} ${clip(row.risk, riskWidth)} ${clip(row.description_token_cost, tokenWidth)} ${clip(row.skill, nameWidth)} ${clip(row.cleanup_reason, reasonWidth)} ${clip(row.last_strong_read || "-", dateWidth)} ${clip(row.path, pathWidth)}`,
       );
@@ -299,20 +305,21 @@ export async function runInteractive(rows, payload, options, io = {}) {
     function toggleCurrent() {
       const row = candidateRows(rows, state)[state.cursor];
       if (!row) return;
-      if (state.selected.has(row.skill)) {
-        state.selected.delete(row.skill);
+      const key = rowKey(row);
+      if (state.selected.has(key)) {
+        state.selected.delete(key);
       } else {
-        state.selected.add(row.skill);
+        state.selected.add(key);
       }
       state.message = "";
     }
 
     function toggleAll() {
       const candidates = candidateRows(rows, state);
-      if (candidates.length > 0 && candidates.every((row) => state.selected.has(row.skill))) {
-        for (const row of candidates) state.selected.delete(row.skill);
+      if (candidates.length > 0 && candidates.every((row) => state.selected.has(rowKey(row)))) {
+        for (const row of candidates) state.selected.delete(rowKey(row));
       } else {
-        for (const row of candidates) state.selected.add(row.skill);
+        for (const row of candidates) state.selected.add(rowKey(row));
       }
       state.message = "";
     }
@@ -328,7 +335,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
       const row = candidates[state.cursor];
       if (!row) return;
       state.omitted.add(row.skill);
-      state.selected.delete(row.skill);
+      state.selected.delete(rowKey(row));
       const saved = appendOmitPattern(options, row.skill);
       state.cursor = Math.min(state.cursor, Math.max(0, candidateRows(rows, state).length - 1));
       state.message = saved.saved

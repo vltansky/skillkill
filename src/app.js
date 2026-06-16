@@ -71,7 +71,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     return result;
   }
 
-  const skills = collectSkills(options.skillsDir);
+  const skills = collectSkills(options.skillsDirs);
   const scanStats = await scanEvidence(skills, options);
   const omitPatterns = loadOmitPatterns(options);
   const modelOptions = { ...options, now, omitPatterns };

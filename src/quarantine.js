@@ -29,6 +29,15 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function pathExistsOrSymlink(file) {
+  try {
+    fs.lstatSync(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function listCleanupRuns(stateDir) {
   const runsDir = path.join(stateDir, "runs");
   if (!fs.existsSync(runsDir)) return [];
@@ -94,7 +103,7 @@ export function quarantineCandidates(rows, options) {
       itemsDir,
       `${String(index + 1).padStart(4, "0")}-${row.skill.replaceAll("/", "_")}`,
     );
-    if (!fs.existsSync(row.skill_dir)) continue;
+    if (!pathExistsOrSymlink(row.skill_dir)) continue;
     fs.renameSync(row.skill_dir, itemDir);
     entries.push({
       skill: row.skill,
@@ -143,11 +152,11 @@ export function restoreCleanupRun(stateDir, undoTarget) {
   const skipped = [];
 
   for (const entry of manifest.entries || []) {
-    if (!fs.existsSync(entry.quarantinedPath)) {
+    if (!pathExistsOrSymlink(entry.quarantinedPath)) {
       skipped.push({ ...entry, reason: "missing quarantined path" });
       continue;
     }
-    if (fs.existsSync(entry.originalPath)) {
+    if (pathExistsOrSymlink(entry.originalPath)) {
       skipped.push({ ...entry, reason: "original path already exists" });
       continue;
     }

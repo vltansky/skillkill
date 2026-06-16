@@ -162,9 +162,13 @@ export function buildRows(skills, options) {
       }
 
       const row = {
+        id: usage.id || usage.path,
         skill: usage.skill,
+        install_root: usage.installRoot || "",
         path: usage.path,
         skill_dir: path.dirname(usage.path),
+        is_symlink: Boolean(usage.isSymlink),
+        link_target: usage.linkTarget || "",
         description: usage.description || "",
         description_token_cost: estimateDescriptionTokens(usage.description),
         strong_count: usage.strong.length,

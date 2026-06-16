@@ -28,8 +28,10 @@ function inferredLocalLockPath(skillsDir) {
 
 export function getVercelLockPaths(options = {}) {
   const globalLock = getVercelGlobalLockPath();
-  const localLock = inferredLocalLockPath(options.skillsDir);
-  return unique([globalLock, localLock]);
+  const localLocks = (options.skillsDirs || [options.skillsDir]).map((skillsDir) =>
+    inferredLocalLockPath(skillsDir),
+  );
+  return unique([globalLock, ...localLocks]);
 }
 
 function readLockFile(lockPath) {

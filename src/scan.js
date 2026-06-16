@@ -7,10 +7,8 @@ import { timestampFromRecord } from "./model.js";
 
 const SKILL_BLOCK_RE =
   /<skill>\s*<name>([^<]+)<\/name>\s*<path>([^<]+)<\/path>[\s\S]*?<\/skill>/g;
-const AGENTS_SKILL_PATH_RE =
-  /(?<path>(?:~|\/[^"'<>\s]+)?\/\.agents\/skills\/(?<name>[^\/"'<>\s]+)\/SKILL\.md)/g;
-const CLAUDE_SKILL_PATH_RE =
-  /(?:~|\/[^"'<>\s]+)?\/\.claude\/skills\/(?<name>[^\/"'<>\s]+)\/SKILL\.md/g;
+const DOT_SKILL_PATH_RE =
+  /(?<path>(?:~|\/[^"'<>\s]+)?\/\.(?:agents|claude|codex|cursor)\/skills\/(?<name>[^\/"'<>\s]+)\/SKILL\.md)/g;
 const READ_TOOL_NAMES = new Set([
   "cat",
   "open",
@@ -24,24 +22,36 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function dynamicSkillPathRe(skillsDir) {
-  if (skillsDir.includes(`${path.sep}.agents${path.sep}skills`)) return null;
-  return new RegExp(
-    `(?<path>${escapeRegExp(skillsDir)}\\/(?<name>[^\\/"'<>\\s]+)\\/SKILL\\.md)`,
-    "g",
-  );
+function skillDirs(value) {
+  return (Array.isArray(value) ? value : [value]).filter(Boolean);
 }
 
-function dynamicSkillPathPattern(skillsDir) {
-  if (skillsDir.includes(`${path.sep}.agents${path.sep}skills`)) return "";
-  return `${escapeRegExp(skillsDir)}\\/[^\\/"'<>\\s]+\\/SKILL\\.md`;
+function isKnownDotSkillRoot(skillsDir) {
+  return /\/\.(?:agents|claude|codex|cursor)\/skills$/.test(path.resolve(skillsDir));
 }
 
-function skillPathSearchPattern(skillsDir) {
+function dynamicSkillPathRes(skillsDirs) {
+  return skillDirs(skillsDirs)
+    .filter((skillsDir) => !isKnownDotSkillRoot(skillsDir))
+    .map(
+      (skillsDir) =>
+        new RegExp(
+          `(?<path>${escapeRegExp(skillsDir)}\\/(?<name>[^\\/"'<>\\s]+)\\/SKILL\\.md)`,
+          "g",
+        ),
+    );
+}
+
+function dynamicSkillPathPatterns(skillsDirs) {
+  return skillDirs(skillsDirs)
+    .filter((skillsDir) => !isKnownDotSkillRoot(skillsDir))
+    .map((skillsDir) => `${escapeRegExp(skillsDir)}\\/[^\\/"'<>\\s]+\\/SKILL\\.md`);
+}
+
+function skillPathSearchPattern(skillsDirs) {
   return [
-    String.raw`(?:~|/[^"'<>\s]+)?/\.agents/skills/[^/"'<>\s]+/SKILL\.md`,
-    String.raw`(?:~|/[^"'<>\s]+)?/\.claude/skills/[^/"'<>\s]+/SKILL\.md`,
-    dynamicSkillPathPattern(skillsDir),
+    String.raw`(?:~|/[^"'<>\s]+)?/\.(?:agents|claude|codex|cursor)/skills/[^/"'<>\s]+/SKILL\.md`,
+    ...dynamicSkillPathPatterns(skillsDirs),
   ]
     .filter(Boolean)
     .join("|");
@@ -182,22 +192,31 @@ export function listSkillFiles(skillsDir) {
     .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
     .map((entry) => ({
       name: entry.name,
+      root: skillsDir,
       file: path.join(skillsDir, entry.name, "SKILL.md"),
     }))
     .filter((entry) => fs.existsSync(entry.file));
 }
 
-export function collectSkills(skillsDir) {
+export function collectSkills(skillsDirs) {
   const skills = new Map();
-  for (const entry of listSkillFiles(skillsDir)) {
+  for (const entry of skillDirs(skillsDirs).flatMap((skillsDir) => listSkillFiles(skillsDir))) {
     const stat = fs.statSync(entry.file);
+    const skillDir = path.dirname(entry.file);
+    const linkStat = fs.lstatSync(skillDir);
+    const isSymlink = linkStat.isSymbolicLink();
     const metadata = readSkillMetadata(entry.file);
-    skills.set(entry.name, {
+    const id = `${entry.root}:${entry.name}`;
+    skills.set(id, {
+      id,
       skill: entry.name,
+      installRoot: entry.root,
       path: entry.file,
+      isSymlink,
+      linkTarget: isSymlink ? fs.realpathSync(skillDir) : "",
       description: typeof metadata.description === "string" ? metadata.description : "",
       atime: stat.atime,
-      birthtime: stat.birthtime,
+      birthtime: isSymlink ? linkStat.birthtime : stat.birthtime,
       mtime: stat.mtime,
       strong: [],
       weak: [],
@@ -207,31 +226,42 @@ export function collectSkills(skillsDir) {
 }
 
 function addEvidence(skills, name, evidence, strong) {
-  const usage = skills.get(name);
-  if (!usage) return false;
-  (strong ? usage.strong : usage.weak).push(evidence);
-  return true;
+  const matches = [...skills.values()].filter((usage) => usage.skill === name);
+  for (const usage of matches) {
+    (strong ? usage.strong : usage.weak).push(evidence);
+  }
+  return matches.length > 0;
 }
 
-function addPathEvidence(skills, skillsDir, pathText, fallbackName, evidence, strong) {
+function addPathEvidence(skills, skillsDirs, pathText, fallbackName, evidence, strong) {
   const file = pathText.startsWith("~/")
     ? path.join(process.env.HOME || "", pathText.slice(2))
     : pathText;
-  if (!withinRoot(file, skillsDir)) return false;
+  if (!skillDirs(skillsDirs).some((skillsDir) => withinRoot(file, skillsDir))) return false;
+  const exact = [...skills.values()].find(
+    (usage) => path.resolve(usage.path) === path.resolve(file),
+  );
+  if (exact) {
+    (strong ? exact.strong : exact.weak).push(evidence);
+    return true;
+  }
   const name = path.basename(path.dirname(file)) || fallbackName;
   return addEvidence(skills, name, evidence, strong);
 }
 
 function addSkillPathReferences(skills, options, text, context) {
-  const customPathRe = dynamicSkillPathRe(options.skillsDir);
+  const roots = options.skillsDirs || options.skillsDir;
+  const customPathRes = dynamicSkillPathRes(roots);
   const strong = Boolean(context.strong);
   let count = 0;
 
-  for (const match of text.matchAll(CLAUDE_SKILL_PATH_RE)) {
+  for (const match of text.matchAll(DOT_SKILL_PATH_RE)) {
     const name = context.aliases?.get(match.groups.name) || match.groups.name;
     if (
-      addEvidence(
+      addPathEvidence(
         skills,
+        roots,
+        match.groups.path,
         name,
         {
           ts: context.ts,
@@ -245,31 +275,12 @@ function addSkillPathReferences(skills, options, text, context) {
     }
   }
 
-  for (const match of text.matchAll(AGENTS_SKILL_PATH_RE)) {
-    if (
-      addPathEvidence(
-        skills,
-        options.skillsDir,
-        match.groups.path,
-        match.groups.name,
-        {
-          ts: context.ts,
-          kind: context.kind,
-          source: context.source,
-        },
-        strong,
-      )
-    ) {
-      count += 1;
-    }
-  }
-
-  if (customPathRe) {
+  for (const customPathRe of customPathRes) {
     for (const match of text.matchAll(customPathRe)) {
       if (
         addPathEvidence(
           skills,
-          options.skillsDir,
+          roots,
           match.groups.path,
           match.groups.name,
           {
@@ -592,6 +603,7 @@ function scanPathMatchesInRoots(skills, roots, pattern, stats, options, kind, sc
 }
 
 async function scanCodex(skills, options, stats) {
+  const rootsForSkills = options.skillsDirs || options.skillsDir;
   const roots = existingRoots([
     path.join(options.codexDir, "archived_sessions"),
     path.join(options.codexDir, "sessions"),
@@ -614,7 +626,7 @@ async function scanCodex(skills, options, stats) {
         if (
           addPathEvidence(
             skills,
-            options.skillsDir,
+            rootsForSkills,
             skillPath,
             name,
             {
@@ -640,7 +652,7 @@ async function scanCodex(skills, options, stats) {
   );
 }
 
-function claudeAliases(claudeDir, skillsDir) {
+function claudeAliases(claudeDir, skillsDirs) {
   const aliases = new Map();
   const claudeSkills = path.join(claudeDir, "skills");
   if (!fs.existsSync(claudeSkills)) return aliases;
@@ -653,7 +665,7 @@ function claudeAliases(claudeDir, skillsDir) {
     } catch {
       continue;
     }
-    if (!withinRoot(resolved, skillsDir)) continue;
+    if (!skillDirs(skillsDirs).some((skillsDir) => withinRoot(resolved, skillsDir))) continue;
     const name = path.basename(
       resolved.endsWith("SKILL.md") ? path.dirname(resolved) : resolved,
     );
@@ -663,7 +675,8 @@ function claudeAliases(claudeDir, skillsDir) {
 }
 
 async function scanClaude(skills, options, stats) {
-  const aliases = claudeAliases(options.claudeDir, options.skillsDir);
+  const rootsForSkills = options.skillsDirs || options.skillsDir;
+  const aliases = claudeAliases(options.claudeDir, rootsForSkills);
   const jsonlRoots = existingRoots([
     path.join(options.claudeDir, "history.jsonl"),
     path.join(options.claudeDir, "projects"),
@@ -671,7 +684,7 @@ async function scanClaude(skills, options, stats) {
     path.join(options.claudeAppDir, "local-agent-mode-sessions"),
   ]);
   const pattern =
-    `"attributionSkill"|${skillPathSearchPattern(options.skillsDir)}`;
+    `"attributionSkill"|${skillPathSearchPattern(rootsForSkills)}`;
 
   const onRecord = (record, file, lineNo) => {
     const ts = timestampFromRecord(record) || fileTimestamp(file);
@@ -726,13 +739,14 @@ async function scanClaude(skills, options, stats) {
 }
 
 async function scanOpencode(skills, options, stats) {
+  const rootsForSkills = options.skillsDirs || options.skillsDir;
   const roots = existingRoots([
     path.join(options.opencodeDir, "storage", "message"),
     path.join(options.opencodeDir, "storage", "part"),
     path.join(options.opencodeDir, "storage", "session", "message"),
     path.join(options.opencodeDir, "storage", "session", "part"),
   ]);
-  const pattern = skillPathSearchPattern(options.skillsDir);
+  const pattern = skillPathSearchPattern(rootsForSkills);
 
   await scanMatchingJsonFiles(
     roots,
@@ -758,11 +772,12 @@ async function scanOpencode(skills, options, stats) {
 }
 
 function scanCursor(skills, options, stats) {
+  const rootsForSkills = options.skillsDirs || options.skillsDir;
   const roots = existingRoots([options.cursorDir]);
   scanPathMatchesInRoots(
     skills,
     roots,
-    skillPathSearchPattern(options.skillsDir),
+    skillPathSearchPattern(rootsForSkills),
     stats.cursor,
     options,
     "cursor_path_reference",
@@ -771,11 +786,12 @@ function scanCursor(skills, options, stats) {
 }
 
 function scanFilesystem(skills, options, stats) {
+  const rootsForSkills = options.skillsDirs || options.skillsDir;
   const roots = existingRoots(options.evidenceDirs || []);
   scanPathMatchesInRoots(
     skills,
     roots,
-    skillPathSearchPattern(options.skillsDir),
+    skillPathSearchPattern(rootsForSkills),
     stats.filesystem,
     options,
     "filesystem_path_reference",

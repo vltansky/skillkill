@@ -30,7 +30,8 @@ it prints static output instead.
 `skillkill` scans installed skill directories, then checks local agent history
 for evidence that each skill was actually used.
 
-- Default skill root: `~/.agents/skills`
+- Default skill roots: `~/.agents/skills`, `~/.claude/skills`,
+  `~/.codex/skills`, and `~/.cursor/skills`
 - Strong evidence: native skill-invocation records from supported tools
 - Weak evidence: raw `SKILL.md` path mentions in supported local stores
 - Cleanup candidates: stale strong usage or never-used skills past the age
@@ -59,6 +60,8 @@ native attribution.
   saved by cleanup.
 - `--omit`, `--whitelist`, and `~/.config/skillkill/omit` keep known-good skills
   out of cleanup candidates.
+- Symlinked skill installs are treated as installs. Cleanup moves the symlink
+  into quarantine, not the symlink target.
 
 ## Docs
 
@@ -75,8 +78,9 @@ native attribution.
 npx skillkill
 skillkill
 
-# Scan a different skill root or evidence source
+# Scan different skill roots or evidence sources
 skillkill --path ~/.agents/skills
+skillkill --path ~/.agents/skills --path ~/.claude/skills
 skillkill --source opencode
 skillkill --source cursor
 skillkill --evidence-dir ~/.continue
@@ -132,7 +136,7 @@ Interactive omit appends the skill name to `~/.config/skillkill/omit` unless
 
 | Option | Purpose |
 | --- | --- |
-| `--path PATH`, `--skills-dir PATH` | Skills directory to scan |
+| `--path PATH`, `--skills-dir PATH` | Skills directory to scan; repeatable |
 | `--source codex|claude|opencode|cursor|filesystem|all` | Evidence source to scan |
 | `--evidence-dir PATH` | Extra transcript or log directory for weak path evidence |
 | `--unused-days N` | Mark skills stale after last strong use |

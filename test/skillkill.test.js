@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { main } from "../src/app.js";
+import { parseArgs } from "../src/args.js";
 import { renderInteractiveScreen, shouldRunInteractive } from "../src/interactive.js";
 import { buildRows } from "../src/model.js";
 import { loadOmitPatterns } from "../src/omit.js";
@@ -61,6 +62,9 @@ async function waitForOutput(stdout, pattern) {
 function makeFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillkill-test-"));
   const skillsDir = path.join(root, "skills");
+  const claudeSkillsDir = path.join(root, ".claude", "skills");
+  const codexSkillsDir = path.join(root, ".codex", "skills");
+  const cursorSkillsDir = path.join(root, ".cursor", "skills");
   const codexDir = path.join(root, "codex");
   const claudeDir = path.join(root, "claude");
   const claudeAppDir = path.join(root, "claude-app");
@@ -71,14 +75,18 @@ function makeFixture() {
   fs.mkdirSync(path.join(codexDir, "sessions"), { recursive: true });
   fs.mkdirSync(path.join(claudeDir, "projects"), { recursive: true });
 
-  const skillPath = (name) => path.join(skillsDir, name, "SKILL.md");
-  const writeSkill = (name) => {
-    fs.mkdirSync(path.dirname(skillPath(name)), { recursive: true });
+  const skillPathIn = (skillsRoot, name) => path.join(skillsRoot, name, "SKILL.md");
+  const skillPath = (name) => skillPathIn(skillsDir, name);
+  const writeSkillAt = (skillsRoot, name) => {
+    const file = skillPathIn(skillsRoot, name);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(
-      skillPath(name),
+      file,
       `---\nname: ${name}\ndescription: ${name} fixture skill for cleanup tests\n---\n# ${name}\n`,
     );
+    return file;
   };
+  const writeSkill = (name) => writeSkillAt(skillsDir, name);
 
   for (const name of [
     "stale-skill",
@@ -115,6 +123,9 @@ function makeFixture() {
   return {
     root,
     skillsDir,
+    claudeSkillsDir,
+    codexSkillsDir,
+    cursorSkillsDir,
     codexDir,
     claudeDir,
     claudeAppDir,
@@ -123,7 +134,9 @@ function makeFixture() {
     evidenceDir,
     stateDir,
     skillPath,
+    skillPathIn,
     writeSkill,
+    writeSkillAt,
   };
 }
 
@@ -139,6 +152,18 @@ function makeVercelLockEntry(skillName) {
     updatedAt: "2026-06-02T00:00:00.000Z",
   };
 }
+
+test("defaults to common installed skill roots and allows repeatable path overrides", () => {
+  const defaults = parseArgs([]);
+  assert.equal(defaults.skillsDirs.some((item) => item.endsWith("/.agents/skills")), true);
+  assert.equal(defaults.skillsDirs.some((item) => item.endsWith("/.claude/skills")), true);
+  assert.equal(defaults.skillsDirs.some((item) => item.endsWith("/.codex/skills")), true);
+  assert.equal(defaults.skillsDirs.some((item) => item.endsWith("/.cursor/skills")), true);
+
+  const custom = parseArgs(["--path", "/tmp/one", "--path", "/tmp/two"]);
+  assert.deepEqual(custom.skillsDirs, ["/tmp/one", "/tmp/two"]);
+  assert.equal(custom.skillsDir, "/tmp/one");
+});
 
 test("builds rows from strong Codex and Claude evidence", async () => {
   const fixture = makeFixture();
@@ -277,6 +302,65 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
   assert.equal(stats.opencode.evidence, 3);
   assert.equal(stats.cursor.evidence, 1);
   assert.equal(stats.filesystem.evidence, 1);
+});
+
+test("collects skills from multiple install roots and matches their path evidence", async () => {
+  const fixture = makeFixture();
+  const roots = [
+    fixture.skillsDir,
+    fixture.claudeSkillsDir,
+    fixture.codexSkillsDir,
+    fixture.cursorSkillsDir,
+  ];
+  const claudeSkill = fixture.writeSkillAt(fixture.claudeSkillsDir, "claude-installed");
+  const codexSkill = fixture.writeSkillAt(fixture.codexSkillsDir, "codex-installed");
+  const cursorSkill = fixture.writeSkillAt(fixture.cursorSkillsDir, "cursor-installed");
+
+  fs.appendFileSync(
+    path.join(fixture.codexDir, "sessions", "session.jsonl"),
+    `\n${JSON.stringify({
+      timestamp: "2026-06-13T00:00:00Z",
+      message: `<skill>\n<name>codex-installed</name>\n<path>${codexSkill}</path>\n</skill>`,
+    })}\n`,
+  );
+  fs.appendFileSync(
+    path.join(fixture.claudeDir, "projects", "project.jsonl"),
+    `${JSON.stringify({
+      timestamp: "2026-06-12T00:00:00Z",
+      attributionSkill: "claude-installed",
+    })}\n`,
+  );
+  const cursorChatDir = path.join(fixture.cursorDir, "chat");
+  fs.mkdirSync(cursorChatDir, { recursive: true });
+  fs.writeFileSync(path.join(cursorChatDir, "store.db"), `mentioned ${cursorSkill}`);
+
+  const skills = collectSkills(roots);
+  const stats = await scanEvidence(skills, {
+    skillsDir: fixture.skillsDir,
+    skillsDirs: roots,
+    codexDir: fixture.codexDir,
+    claudeDir: fixture.claudeDir,
+    claudeAppDir: fixture.claudeAppDir,
+    opencodeDir: fixture.opencodeDir,
+    cursorDir: fixture.cursorDir,
+    source: "all",
+    fullScan: true,
+  });
+  const rows = buildRows(skills, {
+    unusedDays: 45,
+    unusedInstalledDays: 0,
+    now: NOW,
+  });
+  const byName = new Map(rows.map((row) => [row.skill, row]));
+
+  assert.equal(byName.get("claude-installed").install_root, fixture.claudeSkillsDir);
+  assert.equal(byName.get("claude-installed").claude_strong_count, 1);
+  assert.equal(byName.get("codex-installed").install_root, fixture.codexSkillsDir);
+  assert.equal(byName.get("codex-installed").codex_strong_count, 1);
+  assert.equal(byName.get("cursor-installed").install_root, fixture.cursorSkillsDir);
+  assert.equal(byName.get("cursor-installed").cursor_weak_count, 1);
+  assert.equal(stats.cursor.evidence >= 1, true);
+  assert.equal(fs.existsSync(claudeSkill), true);
 });
 
 test("formats cleanup commands for candidates only", async () => {
@@ -541,10 +625,11 @@ test("renders interactive cleanup candidates", async () => {
     unusedInstalledDays: 0,
     now: NOW,
   });
+  const staleRow = rows.find((row) => row.skill === "stale-skill");
 
   const screen = renderInteractiveScreen(
     rows,
-    { cursor: 0, selected: new Set(["stale-skill"]) },
+    { cursor: 0, selected: new Set([staleRow.id]) },
     { columns: 120, rows: 24 },
   );
 
@@ -580,7 +665,7 @@ test("renders interactive cleanup candidates", async () => {
     rows,
     {
       cursor: 0,
-      selected: new Set(["stale-skill"]),
+      selected: new Set([staleRow.id]),
       omitted: new Set(),
       confirming: true,
       savingsDays: 30,
@@ -832,6 +917,65 @@ test("apply quarantines candidates and undo restores them", async () => {
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("weak-only"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("recent-skill"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath(".system-skill"))), true);
+});
+
+test("apply quarantines symlinked skills without moving the symlink target", async () => {
+  const fixture = makeFixture();
+  const targetDir = path.join(fixture.root, "shared", "linked-skill");
+  const targetSkill = path.join(targetDir, "SKILL.md");
+  const linkDir = path.join(fixture.cursorSkillsDir, "linked-skill");
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.writeFileSync(
+    targetSkill,
+    "---\nname: linked-skill\ndescription: linked skill fixture\n---\n# linked-skill\n",
+  );
+  fs.mkdirSync(path.dirname(linkDir), { recursive: true });
+  fs.symlinkSync(targetDir, linkDir, "dir");
+
+  let stdout = "";
+  await main(
+    [
+      "--path",
+      fixture.cursorSkillsDir,
+      "--codex-dir",
+      fixture.codexDir,
+      "--claude-dir",
+      fixture.claudeDir,
+      "--claude-app-dir",
+      fixture.claudeAppDir,
+      "--opencode-dir",
+      fixture.opencodeDir,
+      "--cursor-dir",
+      fixture.cursorDir,
+      "--unused-installed-days",
+      "0",
+      "--state-dir",
+      fixture.stateDir,
+      "--apply",
+      "--full-scan",
+      "--no-omit-file",
+    ],
+    {
+      now: NOW,
+      stdout: { write: (chunk) => (stdout += chunk) },
+      stderr: { write: () => {} },
+    },
+  );
+
+  assert.match(stdout, /Applying cleanup to 1 candidates/);
+  assert.equal(fs.existsSync(linkDir), false);
+  assert.equal(fs.existsSync(targetSkill), true);
+
+  let undoStdout = "";
+  await main(["undo", "latest", "--state-dir", fixture.stateDir], {
+    now: NOW,
+    stdout: { write: (chunk) => (undoStdout += chunk) },
+    stderr: { write: () => {} },
+  });
+
+  assert.match(undoStdout, /Restored 1 skills/);
+  assert.equal(fs.lstatSync(linkDir).isSymbolicLink(), true);
+  assert.equal(fs.existsSync(targetSkill), true);
 });
 
 test("apply removes Vercel skills lock entries and undo restores them", async () => {

@@ -1,10 +1,18 @@
 import os from "node:os";
 import path from "node:path";
 
+export const DEFAULT_SKILLS_DIRS = [
+  "~/.agents/skills",
+  "~/.claude/skills",
+  "~/.codex/skills",
+  "~/.cursor/skills",
+];
+
 export const DEFAULT_OPTIONS = {
   command: "",
   commandArgs: [],
-  skillsDir: "~/.agents/skills",
+  skillsDir: DEFAULT_SKILLS_DIRS[0],
+  skillsDirs: DEFAULT_SKILLS_DIRS,
   codexDir: "~/.codex",
   claudeDir: "~/.claude",
   claudeAppDir: "~/Library/Application Support/Claude",
@@ -73,7 +81,7 @@ Commands:
   undo [latest|RUN_ID|PATH]       Restore a previous cleanup run
 
 Options:
-  --path PATH                     Skills directory to scan (default: ~/.agents/skills)
+  --path PATH                     Skills directory to scan; repeatable
   --skills-dir PATH               Alias for --path
   --source codex|claude|opencode|cursor|filesystem|all
                                   Evidence source to scan (default: all)
@@ -105,6 +113,7 @@ Options:
   --full-scan                     Parse every JSONL line instead of using ripgrep prefilter
   -h, --help                      Show help
 
+Default skill roots are ~/.agents/skills, ~/.claude/skills, ~/.codex/skills, and ~/.cursor/skills.
 Default behavior is interactive when stdin/stdout are terminals, otherwise static dry-run.
 --apply writes an undo manifest; restore interactively with --undo or directly with --undo latest.
 Direct forms are also available: skillkill list --json, skillkill cleanup --apply,
@@ -117,9 +126,11 @@ export function parseArgs(argv) {
   const options = {
     ...DEFAULT_OPTIONS,
     commandArgs: [...DEFAULT_OPTIONS.commandArgs],
+    skillsDirs: [...DEFAULT_OPTIONS.skillsDirs],
     evidenceDirs: [...DEFAULT_OPTIONS.evidenceDirs],
     omitPatterns: [...DEFAULT_OPTIONS.omitPatterns],
   };
+  let customSkillsDirs = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -132,7 +143,11 @@ export function parseArgs(argv) {
         throw new Error(`Unknown command or option: ${arg}`);
       }
     } else if (arg === "--path" || arg === "--skills-dir") {
-      options.skillsDir = readNext(argv, i, arg);
+      if (!customSkillsDirs) {
+        options.skillsDirs = [];
+        customSkillsDirs = true;
+      }
+      options.skillsDirs.push(readNext(argv, i, arg));
       i += 1;
     } else if (arg === "--source") {
       options.source = readNext(argv, i, arg);
@@ -253,10 +268,24 @@ export function parseArgs(argv) {
     throw new Error("--undo cannot be combined with scan/output/apply options");
   }
 
+  const skillsDirs = [
+    ...new Set(
+      options.skillsDirs
+        .flatMap((value) =>
+          value
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
+        )
+        .map((item) => path.resolve(expandHome(item))),
+    ),
+  ];
+
   return {
     ...options,
     commandArgs: options.commandArgs,
-    skillsDir: path.resolve(expandHome(options.skillsDir)),
+    skillsDir: skillsDirs[0],
+    skillsDirs,
     codexDir: path.resolve(expandHome(options.codexDir)),
     claudeDir: path.resolve(expandHome(options.claudeDir)),
     claudeAppDir: path.resolve(expandHome(options.claudeAppDir)),
