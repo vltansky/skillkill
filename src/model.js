@@ -284,6 +284,10 @@ export function payloadFor(rows, options, scanStats, now = new Date()) {
         (sum, row) => sum + row.description_token_cost,
         0,
       ),
+      recentNewChats: scanStats.recentNewChats || 0,
+      potentialCandidateNewChatTokens:
+        candidates.reduce((sum, row) => sum + row.description_token_cost, 0) *
+        (scanStats.recentNewChats || 0),
       recentActivitySignals: rows.reduce((sum, row) => sum + row.recent_signal_count, 0),
       used14dTokens: rows.reduce((sum, row) => sum + row.used_14d_tokens, 0),
       scanMs: scanStats.elapsedMs,

@@ -73,7 +73,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
   }
 
   const skills = collectSkills(options.skillsDirs);
-  const scanStats = await scanEvidence(skills, options);
+  const scanStats = await scanEvidence(skills, { ...options, now });
   const omitPatterns = loadOmitPatterns(options);
   const modelOptions = { ...options, now, omitPatterns };
   const rows = buildRows(skills, modelOptions);
@@ -83,13 +83,29 @@ export async function main(argv = process.argv.slice(2), io = {}) {
   if (options.snapshot) writeSnapshot(options.snapshot, payload, options);
 
   if (shouldRunInteractive(options, io)) {
-    const interactiveResult = await runInteractive(rows, payload, { ...options, now }, io);
+    const interactiveResult = await runInteractive(
+      rows,
+      payload,
+      { ...options, now, recentNewChats: payload.summary.recentNewChats },
+      io,
+    );
     if (interactiveResult) return interactiveResult;
   }
 
   if (options.apply) {
-    const result = quarantineCandidates(rows, { ...options, now });
-    write(stdout, formatCleanupResult(result, { stdout, savingsDays: options.savingsDays }));
+    const result = quarantineCandidates(rows, {
+      ...options,
+      now,
+      recentNewChats: payload.summary.recentNewChats,
+    });
+    write(
+      stdout,
+      formatCleanupResult(result, {
+        stdout,
+        savingsDays: options.savingsDays,
+        recentNewChats: payload.summary.recentNewChats,
+      }),
+    );
   } else if (options.commands) {
     write(stdout, formatCommands(rows));
   } else if (options.json) {

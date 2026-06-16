@@ -8,6 +8,10 @@ function write(stream, text) {
   stream.write(text);
 }
 
+function plural(count, one, many = `${one}s`) {
+  return count === 1 ? one : many;
+}
+
 function clip(value, width) {
   const text = value === null || value === undefined ? "" : String(value);
   if (width <= 1) return text.slice(0, Math.max(0, width));
@@ -59,11 +63,14 @@ function tokenImpact(picked, state = {}) {
   const removedTokens = picked.reduce((sum, row) => sum + row.description_token_cost, 0);
   const selectedRecentVerifiedUses = picked.reduce((sum, row) => sum + row.recent_strong_count, 0);
   const selectedRecentPathMentions = picked.reduce((sum, row) => sum + row.recent_weak_count, 0);
+  const recentNewChats = state.recentNewChats ?? 0;
   return {
     removedTokens,
+    recentNewChats,
     selectedRecentVerifiedUses,
     selectedRecentPathMentions,
     savingsDays: state.savingsDays ?? 30,
+    potentialNewChatSavings: removedTokens * recentNewChats,
     observedSelectedUseTokens: picked.reduce(
       (sum, row) => sum + row.description_token_cost * row.recent_strong_count,
       0,
@@ -219,6 +226,7 @@ function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
     "",
     color.header("Token effect:"),
     `  Removed description tokens: ${color.token(impact.removedTokens)} per future skill-catalog load`,
+    `  Potential new-chat savings: ${color.token(impact.removedTokens)} x ${color.info(impact.recentNewChats)} new ${plural(impact.recentNewChats, "chat")} in last ${impact.savingsDays} days = ${color.good(impact.potentialNewChatSavings)} tokens`,
     `  Selected verified uses in last ${impact.savingsDays} days: ${color.info(impact.selectedRecentVerifiedUses)}`,
     `  Observed selected-use prompt cost: ${color.token(impact.observedSelectedUseTokens)} tokens`,
     `  Selected path mentions in window: ${color.dim(impact.selectedRecentPathMentions)} (not counted as verified use)`,
@@ -248,7 +256,14 @@ function render(stdout, rows, state) {
 }
 
 function printResult(stdout, result, options) {
-  write(stdout, formatCleanupResult(result, { stdout, savingsDays: options.savingsDays }));
+  write(
+    stdout,
+    formatCleanupResult(result, {
+      stdout,
+      savingsDays: options.savingsDays,
+      recentNewChats: options.recentNewChats,
+    }),
+  );
 }
 
 export async function runInteractive(rows, payload, options, io = {}) {
@@ -276,6 +291,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
     search: "",
     deleteMode: false,
     deleteConfirm: "",
+    recentNewChats: payload.summary.recentNewChats ?? options.recentNewChats ?? 0,
     savingsDays: options.savingsDays ?? 30,
     message: "",
   };

@@ -118,9 +118,9 @@ is a rough estimate from the skill `description` frontmatter field.
 
 The interactive confirmation screen shows the selected skills, description
 tokens removed per future skill-catalog load, and observed token cost from
-recent verified uses of the selected skills. It does not estimate session-wide
-savings because the scanner tracks evidence records, not distinct agent
-sessions.
+recent verified uses of the selected skills. It also shows potential new-chat
+savings: removed description tokens multiplied by distinct new local chat/session
+artifacts found in the last `--savings-days` window.
 
 ## Interactive Keys
 

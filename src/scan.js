@@ -3,7 +3,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { spawnSync } from "node:child_process";
 import { existingRoots, jsonStrings, sourceLabel, walkFiles, withinRoot } from "./fs-utils.js";
-import { timestampFromRecord } from "./model.js";
+import { ageDays, timestampFromRecord } from "./model.js";
 
 const SKILL_BLOCK_RE =
   /<skill>\s*<name>([^<]+)<\/name>\s*<path>([^<]+)<\/path>[\s\S]*?<\/skill>/g;
@@ -67,6 +67,67 @@ function fileTimestamp(file) {
   } catch {
     return null;
   }
+}
+
+function fileCreatedAt(file) {
+  try {
+    const stat = fs.statSync(file);
+    return stat.birthtime?.getTime() > 0 ? stat.birthtime : stat.mtime;
+  } catch {
+    return null;
+  }
+}
+
+function jsonlStartTimestamp(file) {
+  try {
+    const firstLine = fs
+      .readFileSync(file, "utf8")
+      .split(/\r?\n/)
+      .find((line) => line.trim().length > 0);
+    if (!firstLine) return fileCreatedAt(file);
+    return timestampFromRecord(JSON.parse(firstLine)) || fileCreatedAt(file);
+  } catch {
+    return fileCreatedAt(file);
+  }
+}
+
+function jsonStartTimestamp(file) {
+  const parsed = readJsonFile(file);
+  if (!parsed) return fileCreatedAt(file);
+  if (Array.isArray(parsed)) {
+    return parsed
+      .filter((record) => record && typeof record === "object")
+      .map(timestampFromRecord)
+      .find(Boolean) || fileCreatedAt(file);
+  }
+  return timestampFromRecord(parsed) || fileCreatedAt(file);
+}
+
+function isRecentTimestamp(value, options) {
+  if (!value) return false;
+  return ageDays(value, options.now || new Date()) <= (options.savingsDays ?? 30);
+}
+
+function countRecentFiles(roots, predicate, timestampOf, options) {
+  const files = new Set(
+    existingRoots(roots).flatMap((root) => walkFiles(root, predicate)),
+  );
+  return [...files].filter((file) => isRecentTimestamp(timestampOf(file), options)).length;
+}
+
+function countRecentChildDirs(roots, options) {
+  const dirs = new Set();
+  for (const root of existingRoots(roots)) {
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      if (entry.isDirectory()) dirs.add(path.join(root, entry.name));
+    }
+  }
+  return [...dirs].filter((dir) => isRecentTimestamp(fileCreatedAt(dir), options)).length;
+}
+
+function addRecentChats(stats, source, count) {
+  stats[source].recentNewChats += count;
+  stats.recentNewChats += count;
 }
 
 function unquoteFrontmatterValue(value) {
@@ -608,6 +669,11 @@ async function scanCodex(skills, options, stats) {
     path.join(options.codexDir, "archived_sessions"),
     path.join(options.codexDir, "sessions"),
   ]);
+  addRecentChats(
+    stats,
+    "codex",
+    countRecentFiles(roots, (file) => file.endsWith(".jsonl"), jsonlStartTimestamp, options),
+  );
   const pattern =
     "<skill>\\\\n<name>[^<]+</name>\\\\n<path>[^<]+/SKILL\\.md</path>";
 
@@ -683,6 +749,23 @@ async function scanClaude(skills, options, stats) {
     path.join(options.claudeAppDir, "claude-code-sessions"),
     path.join(options.claudeAppDir, "local-agent-mode-sessions"),
   ]);
+  const sessionRoots = existingRoots([
+    path.join(options.claudeDir, "projects"),
+    path.join(options.claudeDir, "tasks"),
+    path.join(options.claudeDir, "sessions"),
+    path.join(options.claudeAppDir, "claude-code-sessions"),
+    path.join(options.claudeAppDir, "local-agent-mode-sessions"),
+  ]);
+  addRecentChats(
+    stats,
+    "claude",
+    countRecentFiles(
+      sessionRoots,
+      (file) => file.endsWith(".jsonl") || file.endsWith(".json"),
+      (file) => (file.endsWith(".jsonl") ? jsonlStartTimestamp(file) : jsonStartTimestamp(file)),
+      options,
+    ),
+  );
   const pattern =
     `"attributionSkill"|${skillPathSearchPattern(rootsForSkills)}`;
 
@@ -746,6 +829,16 @@ async function scanOpencode(skills, options, stats) {
     path.join(options.opencodeDir, "storage", "session", "message"),
     path.join(options.opencodeDir, "storage", "session", "part"),
   ]);
+  addRecentChats(
+    stats,
+    "opencode",
+    countRecentChildDirs(
+      [
+        path.join(options.opencodeDir, "storage", "message"),
+      ],
+      options,
+    ),
+  );
   const pattern = skillPathSearchPattern(rootsForSkills);
 
   await scanMatchingJsonFiles(
@@ -774,6 +867,7 @@ async function scanOpencode(skills, options, stats) {
 function scanCursor(skills, options, stats) {
   const rootsForSkills = options.skillsDirs || options.skillsDir;
   const roots = existingRoots([options.cursorDir]);
+  addRecentChats(stats, "cursor", countRecentChildDirs([options.cursorDir], options));
   scanPathMatchesInRoots(
     skills,
     roots,
@@ -807,9 +901,11 @@ export function newStats() {
     parseErrors: 0,
     evidence: 0,
     matchedFiles: 0,
+    recentNewChats: 0,
   });
   return {
     elapsedMs: 0,
+    recentNewChats: 0,
     codex: scan(),
     claude: scan(),
     opencode: scan(),

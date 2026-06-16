@@ -574,6 +574,8 @@ test("direct list json includes risk and token cost without status", async () =>
   assert.equal(payload.summary.descriptionTokenCost > 0, true);
   assert.equal(payload.summary.used14dTokens > 0, true);
   assert.equal(payload.savingsDays, 30);
+  assert.equal(payload.summary.recentNewChats, 1);
+  assert.equal(payload.summary.potentialCandidateNewChatTokens, 22);
   assert.equal(payload.summary.recentActivitySignals, 2);
 });
 
@@ -612,6 +614,7 @@ test("direct cleanup apply and undo latest commands work", async () => {
 
   assert.match(cleanupStdout, /Done: Quarantined 2 skills/);
   assert.match(cleanupStdout, /Saved per skill-catalog load: 22 description tokens/);
+  assert.match(cleanupStdout, /Potential new-chat savings: 22 x 1 new chat in last 30 days = 22 tokens/);
   assert.match(cleanupStdout, /Command: skillkill --undo /);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), false);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), false);
@@ -634,6 +637,7 @@ test("formats cleanup result with colors and token savings", () => {
       mode: "quarantine",
       count: 1,
       manifest: "/tmp/skillkill/run/manifest.json",
+      recentNewChats: 3,
       entries: [
         {
           skill: "stale-skill",
@@ -651,6 +655,7 @@ test("formats cleanup result with colors and token savings", () => {
   assert.match(output, /\x1b\[/);
   assert.match(output, /Done: Quarantined 1 skill/);
   assert.match(output, /Saved per skill-catalog load: \x1b\[33m11\x1b\[0m description tokens/);
+  assert.match(output, /Potential new-chat savings: \x1b\[33m11\x1b\[0m x \x1b\[36m3\x1b\[0m new chats in last 30 days = \x1b\[1;32m33\x1b\[0m tokens/);
   assert.match(output, /Observed selected-use prompt cost removed: \x1b\[33m22\x1b\[0m tokens/);
   assert.match(output, /Command: \x1b\[36mskillkill --undo \/tmp\/skillkill\/run\/manifest\.json\x1b\[0m/);
 });
@@ -728,6 +733,7 @@ test("renders interactive cleanup candidates", async () => {
       selected: new Set([staleRow.id]),
       omitted: new Set(),
       confirming: true,
+      recentNewChats: 2,
       savingsDays: 30,
     },
     { columns: 120, rows: 24 },
@@ -737,6 +743,7 @@ test("renders interactive cleanup candidates", async () => {
   assert.match(confirmScreen, /You are going to remove 1 skills from active use/);
   assert.match(confirmScreen, /stale-skill/);
   assert.match(confirmScreen, /Removed description tokens: \d+ per future skill-catalog load/);
+  assert.match(confirmScreen, /Potential new-chat savings: 11 x 2 new chats in last 30 days = 22 tokens/);
   assert.match(confirmScreen, /Selected verified uses in last 30 days: 0/);
   assert.match(confirmScreen, /Observed selected-use prompt cost: 0 tokens/);
   assert.match(confirmScreen, /Selected path mentions in window: 0 \(not counted as verified use\)/);
@@ -752,6 +759,7 @@ test("renders interactive cleanup candidates", async () => {
       confirming: true,
       deleteMode: true,
       deleteConfirm: "dele",
+      recentNewChats: 2,
       savingsDays: 30,
     },
     { columns: 120, rows: 24 },
@@ -831,6 +839,7 @@ test("interactive e2e selects with enter and quarantines confirmed rows", async 
   await waitForOutput(stdout, /skillkill confirm cleanup/);
   assert.match(stdout.output, /You are going to remove 1 skills from active use/);
   assert.match(stdout.output, /Removed description tokens: 11 per future skill-catalog load/);
+  assert.match(stdout.output, /Potential new-chat savings: 11 x 1 new chat in last 30 days = 11 tokens/);
   assert.match(stdout.output, /Observed selected-use prompt cost: 0 tokens/);
   press(stdin, "down");
   await waitForOutput(stdout, /Press Enter to quarantine, d to delete permanently, or Esc to review/);

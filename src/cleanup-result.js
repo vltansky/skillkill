@@ -5,8 +5,9 @@ function plural(count, one, many = `${one}s`) {
 }
 
 function cleanupSummary(entries, savingsDays) {
+  const removedTokens = entries.reduce((sum, entry) => sum + (entry.descriptionTokenCost || 0), 0);
   return {
-    removedTokens: entries.reduce((sum, entry) => sum + (entry.descriptionTokenCost || 0), 0),
+    removedTokens,
     recentVerifiedUses: entries.reduce((sum, entry) => sum + (entry.recentStrongCount || 0), 0),
     recentPathMentions: entries.reduce((sum, entry) => sum + (entry.recentWeakCount || 0), 0),
     observedUseTokens: entries.reduce(
@@ -28,12 +29,16 @@ export function formatCleanupResult(result, options = {}) {
   const permanent = result.mode === "delete";
   const action = permanent ? "permanently deleted" : "quarantined";
   const title = `${action[0].toUpperCase()}${action.slice(1)} ${result.count} ${plural(result.count, "skill")}`;
-  const summary = cleanupSummary(result.entries || [], options.savingsDays ?? 30);
+  const savingsDays = result.savingsDays ?? options.savingsDays ?? 30;
+  const recentNewChats = result.recentNewChats ?? options.recentNewChats ?? 0;
+  const summary = cleanupSummary(result.entries || [], savingsDays);
+  const potentialNewChatSavings = summary.removedTokens * recentNewChats;
   const lines = [
     color.good(`Done: ${title}`),
     "",
     color.header("Token savings"),
     `  Saved per skill-catalog load: ${color.token(summary.removedTokens)} description tokens`,
+    `  Potential new-chat savings: ${color.token(summary.removedTokens)} x ${color.info(recentNewChats)} new ${plural(recentNewChats, "chat")} in last ${summary.savingsDays} days = ${color.good(potentialNewChatSavings)} tokens`,
     `  Selected verified uses in last ${summary.savingsDays} days: ${color.info(summary.recentVerifiedUses)}`,
     `  Observed selected-use prompt cost removed: ${color.token(summary.observedUseTokens)} tokens`,
   ];

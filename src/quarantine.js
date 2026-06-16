@@ -102,7 +102,14 @@ export function resolveUndoManifest(stateDir, undoTarget) {
 export function quarantineCandidates(rows, options) {
   const candidates = rows.filter((row) => row.cleanup_candidate);
   if (candidates.length === 0) {
-    return { mode: "quarantine", count: 0, manifest: "", entries: [] };
+    return {
+      mode: "quarantine",
+      count: 0,
+      manifest: "",
+      entries: [],
+      recentNewChats: options.recentNewChats ?? 0,
+      savingsDays: options.savingsDays ?? 30,
+    };
   }
 
   const runDir = uniqueRunDir(options.stateDir, options.now);
@@ -150,6 +157,8 @@ export function quarantineCandidates(rows, options) {
     count: entries.length,
     manifest: manifestPath(runDir),
     entries,
+    recentNewChats: options.recentNewChats ?? 0,
+    savingsDays: options.savingsDays ?? 30,
     vercelLocks: {
       removed: vercelLocks.removed,
       errors: vercelLocks.errors,
@@ -160,7 +169,14 @@ export function quarantineCandidates(rows, options) {
 export function deleteCandidates(rows, options) {
   const candidates = rows.filter((row) => row.cleanup_candidate);
   if (candidates.length === 0) {
-    return { mode: "delete", count: 0, manifest: "", entries: [] };
+    return {
+      mode: "delete",
+      count: 0,
+      manifest: "",
+      entries: [],
+      recentNewChats: options.recentNewChats ?? 0,
+      savingsDays: options.savingsDays ?? 30,
+    };
   }
 
   const entries = [];
@@ -180,6 +196,8 @@ export function deleteCandidates(rows, options) {
     count: entries.length,
     manifest: "",
     entries,
+    recentNewChats: options.recentNewChats ?? 0,
+    savingsDays: options.savingsDays ?? 30,
     vercelLocks: {
       removed: vercelLocks.removed,
       errors: vercelLocks.errors,
