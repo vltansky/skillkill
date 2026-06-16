@@ -95,7 +95,10 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   if (state.confirming) {
     lines.push(
       "",
-      `Quarantine ${selected.size} selected skills? Press y to confirm, n to cancel.`,
+      "! CONFIRM CLEANUP",
+      `  ${selected.size} selected skills will be moved to quarantine.`,
+      "  Press Y to quarantine, N/Esc to go back.",
+      state.message ? `  ${state.message}` : "",
     );
   } else if (state.message) {
     lines.push("", state.message);
@@ -103,7 +106,11 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     lines.push("");
   }
 
-  lines.push("Keys: up/down or j/k move, space/x select, a all, o omit, enter quarantine, q quit");
+  lines.push(
+    state.confirming
+      ? "Confirm: y quarantine, n/esc cancel"
+      : "Keys: up/down or j/k move, space/x select, a all, o omit, enter quarantine, q quit",
+  );
   lines.push("Use --no-interactive for the static table. Cleanup is quarantine-only and undoable.");
   return `${lines.join("\n")}\n`;
 }
@@ -259,6 +266,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
             render(stdout, rows, state);
             return;
           }
+          state.message = "Waiting for Y to quarantine or N to cancel.";
           render(stdout, rows, state);
           return;
         }

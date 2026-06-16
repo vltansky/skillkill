@@ -490,7 +490,10 @@ test("interactive e2e selects with enter and quarantines confirmed rows", async 
   await waitForOutput(stdout, /skillkill interactive cleanup/);
   press(stdin, "space", " ");
   press(stdin, "enter", "\r");
-  await waitForOutput(stdout, /Quarantine 1 selected skills/);
+  await waitForOutput(stdout, /! CONFIRM CLEANUP/);
+  assert.match(stdout.output, /Press Y to quarantine, N\/Esc to go back/);
+  press(stdin, "down");
+  await waitForOutput(stdout, /Waiting for Y to quarantine or N to cancel/);
   press(stdin, "y");
 
   const result = await run;

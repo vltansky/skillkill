@@ -39,6 +39,8 @@ or `j`/`k` to move, `space` or `x` to select, `a` to toggle all candidates, `o`
 to omit the current skill, and `enter` then `y` to quarantine selected skills.
 Interactive omit appends the skill name to `~/.config/skillkill/omit` unless
 `--no-omit-file` is set, in which case the omit is only for the current run.
+After `enter`, the footer switches to a confirmation prompt: `Y` quarantines
+the selected skills, while `N` or `Esc` returns to review.
 
 When output is piped, or when `--no-interactive`, `--commands`, `--json`,
 `--csv`, or `--snapshot` is used, `skillkill` prints static output instead.
