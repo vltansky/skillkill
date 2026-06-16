@@ -24,6 +24,60 @@ function dynamicSkillPathRe(skillsDir) {
   );
 }
 
+function dynamicSkillPathPattern(skillsDir) {
+  if (skillsDir.includes(`${path.sep}.agents${path.sep}skills`)) return "";
+  return `${escapeRegExp(skillsDir)}\\/[^\\/"'<>\\s]+\\/SKILL\\.md`;
+}
+
+function skillPathSearchPattern(skillsDir) {
+  return [
+    String.raw`(?:~|/[^"'<>\s]+)?/\.agents/skills/[^/"'<>\s]+/SKILL\.md`,
+    String.raw`(?:~|/[^"'<>\s]+)?/\.claude/skills/[^/"'<>\s]+/SKILL\.md`,
+    dynamicSkillPathPattern(skillsDir),
+  ]
+    .filter(Boolean)
+    .join("|");
+}
+
+function sourcePointer(file, lineNo) {
+  return lineNo ? `${sourceLabel(file)}:${lineNo}` : sourceLabel(file);
+}
+
+function fileTimestamp(file) {
+  try {
+    return fs.statSync(file).mtime;
+  } catch {
+    return null;
+  }
+}
+
+function addStrategy(stats, strategy) {
+  if (stats.strategy === "not-run") {
+    stats.strategy = strategy;
+    return;
+  }
+  if (!stats.strategy.split("+").includes(strategy)) {
+    stats.strategy = `${stats.strategy}+${strategy}`;
+  }
+}
+
+function attributionSkills(value, out = []) {
+  if (Array.isArray(value)) {
+    value.forEach((item) => attributionSkills(item, out));
+    return out;
+  }
+  if (!value || typeof value !== "object") return out;
+
+  for (const [key, item] of Object.entries(value)) {
+    if (key === "attributionSkill" && typeof item === "string") {
+      out.push(item);
+      continue;
+    }
+    attributionSkills(item, out);
+  }
+  return out;
+}
+
 export function listSkillFiles(skillsDir) {
   if (!fs.existsSync(skillsDir)) return [];
   return fs
@@ -67,6 +121,72 @@ function addPathEvidence(skills, skillsDir, pathText, fallbackName, evidence, st
   if (!withinRoot(file, skillsDir)) return false;
   const name = path.basename(path.dirname(file)) || fallbackName;
   return addEvidence(skills, name, evidence, strong);
+}
+
+function addSkillPathReferences(skills, options, text, context) {
+  const customPathRe = dynamicSkillPathRe(options.skillsDir);
+  let count = 0;
+
+  for (const match of text.matchAll(CLAUDE_SKILL_PATH_RE)) {
+    const name = context.aliases?.get(match.groups.name) || match.groups.name;
+    if (
+      addEvidence(
+        skills,
+        name,
+        {
+          ts: context.ts,
+          kind: context.kind,
+          source: context.source,
+        },
+        false,
+      )
+    ) {
+      count += 1;
+    }
+  }
+
+  for (const match of text.matchAll(AGENTS_SKILL_PATH_RE)) {
+    if (
+      addPathEvidence(
+        skills,
+        options.skillsDir,
+        match.groups.path,
+        match.groups.name,
+        {
+          ts: context.ts,
+          kind: context.kind,
+          source: context.source,
+        },
+        false,
+      )
+    ) {
+      count += 1;
+    }
+  }
+
+  if (customPathRe) {
+    for (const match of text.matchAll(customPathRe)) {
+      if (
+        addPathEvidence(
+          skills,
+          options.skillsDir,
+          match.groups.path,
+          match.groups.name,
+          {
+            ts: context.ts,
+            kind: context.kind,
+            source: context.source,
+          },
+          false,
+        )
+      ) {
+        count += 1;
+      }
+    }
+  }
+
+  if (context.stats) context.stats.evidence += count;
+  return count;
 }
 
 function rgMatchingCoordinates(roots, pattern) {
@@ -143,6 +263,7 @@ function readJsonLines(file) {
 }
 
 async function scanMatchingJsonLines(roots, pattern, stats, onRecord, fullScan = false) {
+  if (roots.length === 0) return;
   const started = Date.now();
   const allFiles = () =>
     roots.flatMap((root) => walkFiles(root, (file) => file.endsWith(".jsonl")));
@@ -158,15 +279,15 @@ async function scanMatchingJsonLines(roots, pattern, stats, onRecord, fullScan =
     for (const [file, lineNumbers] of byFile) {
       inputs.push(...(await readSelectedJsonLines(file, lineNumbers)));
     }
-    stats.strategy = "ripgrep-coordinate-prefilter";
-    stats.matchedFiles = byFile.size;
+    addStrategy(stats, "ripgrep-coordinate-prefilter");
+    stats.matchedFiles += byFile.size;
   } else {
     const prefilter = new RegExp(pattern);
     inputs = allFiles().flatMap((file) =>
       readJsonLines(file).filter(({ line }) => fullScan || prefilter.test(line)),
     );
-    stats.strategy = fullScan ? "full-jsonl-scan" : "full-jsonl-fallback";
-    stats.matchedFiles = new Set(inputs.map((item) => item.file)).size;
+    addStrategy(stats, fullScan ? "full-jsonl-scan" : "full-jsonl-fallback");
+    stats.matchedFiles += new Set(inputs.map((item) => item.file)).size;
   }
 
   stats.matchedLines += inputs.length;
@@ -184,6 +305,177 @@ async function scanMatchingJsonLines(roots, pattern, stats, onRecord, fullScan =
   stats.elapsedMs += Date.now() - started;
 }
 
+function rgMatchingFiles(roots, pattern, glob) {
+  if (roots.length === 0) return null;
+  const args = [
+    "-l",
+    "--no-heading",
+    "--color",
+    "never",
+    "--no-messages",
+    "--glob",
+    glob,
+    "-e",
+    pattern,
+    ...roots,
+  ];
+  const result = spawnSync("rg", args, {
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+
+  if (result.error) return null;
+  if (![0, 1].includes(result.status)) return null;
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function readJsonFile(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+async function scanMatchingJsonFiles(roots, pattern, stats, onRecord, fullScan = false) {
+  if (roots.length === 0) return;
+  const started = Date.now();
+  const allFiles = () =>
+    roots.flatMap((root) => walkFiles(root, (file) => file.endsWith(".json")));
+
+  let files;
+  if (fullScan) {
+    files = allFiles();
+    addStrategy(stats, "full-json-scan");
+  } else {
+    files = rgMatchingFiles(roots, pattern, "*.json");
+    if (files === null) {
+      const prefilter = new RegExp(pattern);
+      files = allFiles().filter((file) => {
+        try {
+          return prefilter.test(fs.readFileSync(file, "utf8"));
+        } catch {
+          return false;
+        }
+      });
+      addStrategy(stats, "full-json-fallback");
+    } else {
+      addStrategy(stats, "ripgrep-file-prefilter");
+    }
+  }
+
+  stats.matchedFiles += new Set(files).size;
+  stats.matchedLines += files.length;
+  for (const file of files) {
+    const parsed = readJsonFile(file);
+    if (parsed === undefined) {
+      stats.parseErrors += 1;
+      continue;
+    }
+    const records = Array.isArray(parsed) ? parsed : [parsed];
+    for (const record of records) {
+      stats.parsedRecords += 1;
+      onRecord(record, file, null);
+    }
+  }
+  stats.elapsedMs += Date.now() - started;
+}
+
+function rgPathMatches(roots, pattern, options = {}) {
+  if (roots.length === 0) return null;
+  const args = [
+    "-n",
+    "-o",
+    "--no-heading",
+    "--color",
+    "never",
+    "--no-messages",
+  ];
+  if (options.binary) args.push("-a");
+  if (options.glob) args.push("--glob", options.glob);
+  args.push("-e", pattern, ...roots);
+
+  const result = spawnSync("rg", args, {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.error) return null;
+  if (![0, 1].includes(result.status)) return null;
+  return result.stdout.split(/\r?\n/).filter((line) => line.trim().length > 0);
+}
+
+function fileMatchesGlob(file, glob) {
+  if (!glob) return true;
+  if (glob.startsWith("**/")) return path.basename(file) === glob.slice(3);
+  return path.basename(file) === glob;
+}
+
+function fallbackPathMatches(skills, roots, pattern, stats, options, kind, scanOptions) {
+  const re = new RegExp(pattern, "g");
+  const files = roots.flatMap((root) =>
+    walkFiles(root, (file) => fileMatchesGlob(file, scanOptions.glob)),
+  );
+  const matchedFiles = new Set();
+
+  for (const file of files) {
+    let text;
+    try {
+      text = fs.readFileSync(file, "latin1");
+    } catch {
+      continue;
+    }
+
+    for (const match of text.matchAll(re)) {
+      matchedFiles.add(file);
+      stats.matchedLines += 1;
+      stats.parsedRecords += 1;
+      addSkillPathReferences(skills, options, match[0], {
+        ts: fileTimestamp(file),
+        kind,
+        source: sourcePointer(file, null),
+        stats,
+      });
+    }
+  }
+  stats.matchedFiles += matchedFiles.size;
+}
+
+function scanPathMatchesInRoots(skills, roots, pattern, stats, options, kind, scanOptions = {}) {
+  if (roots.length === 0) return;
+  const started = Date.now();
+  const rows = rgPathMatches(roots, pattern, scanOptions);
+  if (rows === null) {
+    addStrategy(stats, "full-path-fallback");
+    fallbackPathMatches(skills, roots, pattern, stats, options, kind, scanOptions);
+    stats.elapsedMs += Date.now() - started;
+    return;
+  }
+
+  addStrategy(stats, "ripgrep-path-prefilter");
+  const matchedFiles = new Set();
+  for (const row of rows) {
+    const match = row.match(/^(.*):(\d+):(.*)$/);
+    if (!match) continue;
+    const file = match[1];
+    const lineNo = Number(match[2]);
+    const pathText = match[3];
+    matchedFiles.add(file);
+    stats.matchedLines += 1;
+    stats.parsedRecords += 1;
+    addSkillPathReferences(skills, options, pathText, {
+      ts: fileTimestamp(file),
+      kind,
+      source: sourcePointer(file, Number.isNaN(lineNo) ? null : lineNo),
+      stats,
+    });
+  }
+  stats.matchedFiles += matchedFiles.size;
+  stats.elapsedMs += Date.now() - started;
+}
+
 async function scanCodex(skills, options, stats) {
   const roots = existingRoots([
     path.join(options.codexDir, "archived_sessions"),
@@ -191,7 +483,6 @@ async function scanCodex(skills, options, stats) {
   ]);
   const pattern =
     "<skill>\\\\n<name>[^<]+</name>\\\\n<path>[^<]+/SKILL\\.md</path>";
-  const customPathRe = dynamicSkillPathRe(options.skillsDir);
 
   await scanMatchingJsonLines(
     roots,
@@ -223,45 +514,12 @@ async function scanCodex(skills, options, stats) {
         }
       }
 
-      for (const match of text.matchAll(AGENTS_SKILL_PATH_RE)) {
-        if (
-          addPathEvidence(
-            skills,
-            options.skillsDir,
-            match.groups.path,
-            match.groups.name,
-            {
-              ts,
-              kind: "codex_path_reference",
-              source: `${sourceLabel(file)}:${lineNo}`,
-            },
-            false,
-          )
-        ) {
-          stats.codex.evidence += 1;
-        }
-      }
-
-      if (customPathRe) {
-        for (const match of text.matchAll(customPathRe)) {
-          if (
-            addPathEvidence(
-              skills,
-              options.skillsDir,
-              match.groups.path,
-              match.groups.name,
-              {
-                ts,
-                kind: "codex_path_reference",
-                source: `${sourceLabel(file)}:${lineNo}`,
-              },
-              false,
-            )
-          ) {
-            stats.codex.evidence += 1;
-          }
-        }
-      }
+      addSkillPathReferences(skills, options, text, {
+        ts,
+        kind: "codex_path_reference",
+        source: sourcePointer(file, lineNo),
+        stats: stats.codex,
+      });
     },
     options.fullScan,
   );
@@ -291,102 +549,112 @@ function claudeAliases(claudeDir, skillsDir) {
 
 async function scanClaude(skills, options, stats) {
   const aliases = claudeAliases(options.claudeDir, options.skillsDir);
-  const roots = existingRoots([
+  const jsonlRoots = existingRoots([
     path.join(options.claudeDir, "history.jsonl"),
     path.join(options.claudeDir, "projects"),
+    path.join(options.claudeAppDir, "claude-code-sessions"),
+    path.join(options.claudeAppDir, "local-agent-mode-sessions"),
   ]);
-  const customPathPattern = options.skillsDir.includes(`${path.sep}.agents${path.sep}skills`)
-    ? ""
-    : `|${escapeRegExp(options.skillsDir)}\\/[^"'<>\\s/]+\\/SKILL\\.md`;
   const pattern =
-    `"attributionSkill"|\\.claude/skills/[^"'<>\\s/]+/SKILL\\.md|\\.agents/skills/[^"'<>\\s/]+/SKILL\\.md${customPathPattern}`;
-  const customPathRe = dynamicSkillPathRe(options.skillsDir);
+    `"attributionSkill"|${skillPathSearchPattern(options.skillsDir)}`;
+
+  const onRecord = (record, file, lineNo) => {
+    const ts = timestampFromRecord(record) || fileTimestamp(file);
+
+    for (const attributionSkill of attributionSkills(record)) {
+      const name = aliases.get(attributionSkill) || attributionSkill;
+      if (
+        addEvidence(
+          skills,
+          name,
+          {
+            ts,
+            kind: "claude_attribution_skill",
+            source: sourcePointer(file, lineNo),
+          },
+          true,
+        )
+      ) {
+        stats.claude.evidence += 1;
+      }
+    }
+
+    addSkillPathReferences(skills, options, jsonStrings(record).join("\n"), {
+      ts,
+      kind: "claude_path_reference",
+      source: sourcePointer(file, lineNo),
+      aliases,
+      stats: stats.claude,
+    });
+  };
 
   await scanMatchingJsonLines(
-    roots,
+    jsonlRoots,
     pattern,
     stats.claude,
-    (record, file, lineNo) => {
-      const ts = timestampFromRecord(record);
+    onRecord,
+    options.fullScan,
+  );
 
-      if (typeof record.attributionSkill === "string") {
-        const name = aliases.get(record.attributionSkill) || record.attributionSkill;
-        if (
-          addEvidence(
-            skills,
-            name,
-            {
-              ts,
-              kind: "claude_attribution_skill",
-              source: `${sourceLabel(file)}:${lineNo}`,
-            },
-            true,
-          )
-        ) {
-          stats.claude.evidence += 1;
-        }
-      }
+  await scanMatchingJsonFiles(
+    existingRoots([
+      path.join(options.claudeDir, "tasks"),
+      path.join(options.claudeDir, "sessions"),
+      path.join(options.claudeAppDir, "claude-code-sessions"),
+      path.join(options.claudeAppDir, "local-agent-mode-sessions"),
+    ]),
+    pattern,
+    stats.claude,
+    onRecord,
+    options.fullScan,
+  );
+}
 
-      const text = jsonStrings(record).join("\n");
-      for (const match of text.matchAll(CLAUDE_SKILL_PATH_RE)) {
-        const name = aliases.get(match.groups.name) || match.groups.name;
-        if (
-          addEvidence(
-            skills,
-            name,
-            {
-              ts,
-              kind: "claude_path_reference",
-              source: `${sourceLabel(file)}:${lineNo}`,
-            },
-            false,
-          )
-        ) {
-          stats.claude.evidence += 1;
-        }
-      }
+async function scanOpencode(skills, options, stats) {
+  const roots = existingRoots([
+    path.join(options.opencodeDir, "storage", "message"),
+  ]);
+  const pattern = skillPathSearchPattern(options.skillsDir);
 
-      for (const match of text.matchAll(AGENTS_SKILL_PATH_RE)) {
-        if (
-          addPathEvidence(
-            skills,
-            options.skillsDir,
-            match.groups.path,
-            match.groups.name,
-            {
-              ts,
-              kind: "claude_path_reference",
-              source: `${sourceLabel(file)}:${lineNo}`,
-            },
-            false,
-          )
-        ) {
-          stats.claude.evidence += 1;
-        }
-      }
-
-      if (customPathRe) {
-        for (const match of text.matchAll(customPathRe)) {
-          if (
-            addPathEvidence(
-              skills,
-              options.skillsDir,
-              match.groups.path,
-              match.groups.name,
-              {
-                ts,
-                kind: "claude_path_reference",
-                source: `${sourceLabel(file)}:${lineNo}`,
-              },
-              false,
-            )
-          ) {
-            stats.claude.evidence += 1;
-          }
-        }
-      }
+  await scanMatchingJsonFiles(
+    roots,
+    pattern,
+    stats.opencode,
+    (record, file) => {
+      const ts = timestampFromRecord(record) || fileTimestamp(file);
+      addSkillPathReferences(skills, options, jsonStrings(record).join("\n"), {
+        ts,
+        kind: "opencode_path_reference",
+        source: sourcePointer(file, null),
+        stats: stats.opencode,
+      });
     },
     options.fullScan,
+  );
+}
+
+function scanCursor(skills, options, stats) {
+  const roots = existingRoots([options.cursorDir]);
+  scanPathMatchesInRoots(
+    skills,
+    roots,
+    skillPathSearchPattern(options.skillsDir),
+    stats.cursor,
+    options,
+    "cursor_path_reference",
+    { binary: true, glob: "**/store.db" },
+  );
+}
+
+function scanFilesystem(skills, options, stats) {
+  const roots = existingRoots(options.evidenceDirs || []);
+  scanPathMatchesInRoots(
+    skills,
+    roots,
+    skillPathSearchPattern(options.skillsDir),
+    stats.filesystem,
+    options,
+    "filesystem_path_reference",
   );
 }
 
@@ -404,6 +672,9 @@ export function newStats() {
     elapsedMs: 0,
     codex: scan(),
     claude: scan(),
+    opencode: scan(),
+    cursor: scan(),
+    filesystem: scan(),
   };
 }
 
@@ -415,6 +686,15 @@ export async function scanEvidence(skills, options) {
   }
   if (options.source === "claude" || options.source === "all") {
     await scanClaude(skills, options, stats);
+  }
+  if (options.source === "opencode" || options.source === "all") {
+    await scanOpencode(skills, options, stats);
+  }
+  if (options.source === "cursor" || options.source === "all") {
+    scanCursor(skills, options, stats);
+  }
+  if (options.source === "filesystem" || options.source === "all") {
+    scanFilesystem(skills, options, stats);
   }
   stats.elapsedMs = Date.now() - started;
   return stats;

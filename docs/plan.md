@@ -19,7 +19,7 @@ The closest reference is `npx npkill`:
 - Support automation output.
 
 For `skillkill`, the artifact is a skill directory, and the context is usage
-evidence from Codex and Claude transcripts.
+evidence from local agent transcript/session stores.
 
 ## V1 Scope
 
@@ -30,6 +30,9 @@ skillkill
 skillkill --path ~/.agents/skills
 skillkill --source codex
 skillkill --source claude
+skillkill --source opencode
+skillkill --source cursor
+skillkill --source filesystem --evidence-dir ~/.continue
 skillkill --omit simplify
 skillkill --no-interactive
 skillkill --commands
@@ -47,7 +50,10 @@ Behavior:
 - Candidates first in both interactive and static views.
 - Strong evidence from Codex injected skill blocks and Claude
   `attributionSkill`.
-- Weak evidence shown only as context.
+- Weak evidence from OpenCode message JSON, Cursor chat stores, and
+  user-provided local evidence directories.
+- Recent weak evidence defers cleanup by default because it may indicate use in
+  tools without native skill attribution, but it stays labeled as weak.
 - `--apply` moves candidates into a local quarantine run and prints every moved
   path.
 - `--undo latest` restores the most recent quarantine run.

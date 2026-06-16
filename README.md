@@ -20,6 +20,9 @@ cleanup can be restored from a manifest.
 npx skillkill
 skillkill
 skillkill --path ~/.agents/skills
+skillkill --source opencode
+skillkill --source cursor
+skillkill --evidence-dir ~/.continue
 skillkill --omit simplify
 skillkill --no-interactive
 skillkill --commands
@@ -38,6 +41,12 @@ When output is piped, or when `--no-interactive`, `--commands`, `--json`,
 `--csv`, or `--snapshot` is used, `skillkill` prints static output instead.
 `--apply` moves all candidates into a local quarantine run and writes an undo
 manifest. `--undo latest` restores the most recent run.
+
+`skillkill` scans Codex, Claude, OpenCode, and Cursor local stores by default.
+Codex injected skill blocks and Claude `attributionSkill` records count as
+strong evidence. OpenCode, Cursor, extra `--evidence-dir` roots, and raw path
+mentions count as weak evidence. Recent weak evidence defers cleanup by default
+because it may indicate use in a provider without native skill attribution.
 
 ## Whitelist / Omit
 

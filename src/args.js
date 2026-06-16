@@ -5,9 +5,14 @@ export const DEFAULT_OPTIONS = {
   skillsDir: "~/.agents/skills",
   codexDir: "~/.codex",
   claudeDir: "~/.claude",
+  claudeAppDir: "~/Library/Application Support/Claude",
+  opencodeDir: "~/.local/share/opencode",
+  cursorDir: "~/.cursor/chats",
+  evidenceDirs: [],
   source: "all",
   unusedDays: 45,
   unusedInstalledDays: 7,
+  protectWeakDays: 45,
   limit: 40,
   fullScan: false,
   json: false,
@@ -52,11 +57,17 @@ export function printHelp() {
 Options:
   --path PATH                     Skills directory to scan (default: ~/.agents/skills)
   --skills-dir PATH               Alias for --path
-  --source codex|claude|all       Evidence source to scan (default: all)
+  --source codex|claude|opencode|cursor|filesystem|all
+                                  Evidence source to scan (default: all)
   --codex-dir PATH                Codex state directory (default: ~/.codex)
   --claude-dir PATH               Claude state directory (default: ~/.claude)
+  --claude-app-dir PATH           Claude desktop state directory
+  --opencode-dir PATH             OpenCode state directory (default: ~/.local/share/opencode)
+  --cursor-dir PATH               Cursor chats directory (default: ~/.cursor/chats)
+  --evidence-dir PATH             Extra local transcript/log directory to scan for weak path refs
   --unused-days N                 Mark skills stale after N days (default: 45)
   --unused-installed-days N       Propose never-used skills older than N days (default: 7)
+  --protect-weak-days N           Defer cleanup after recent weak evidence (default: 45)
   --limit N                       Table row limit (default: 40)
   --commands                      Print all candidate rm commands
   --json                          Print JSON payload to stdout
@@ -82,7 +93,11 @@ Command aliases: skill-kill, skill-cleanup, skill-prune.
 }
 
 export function parseArgs(argv) {
-  const options = { ...DEFAULT_OPTIONS, omitPatterns: [...DEFAULT_OPTIONS.omitPatterns] };
+  const options = {
+    ...DEFAULT_OPTIONS,
+    evidenceDirs: [...DEFAULT_OPTIONS.evidenceDirs],
+    omitPatterns: [...DEFAULT_OPTIONS.omitPatterns],
+  };
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -98,11 +113,26 @@ export function parseArgs(argv) {
     } else if (arg === "--claude-dir") {
       options.claudeDir = readNext(argv, i, arg);
       i += 1;
+    } else if (arg === "--claude-app-dir") {
+      options.claudeAppDir = readNext(argv, i, arg);
+      i += 1;
+    } else if (arg === "--opencode-dir") {
+      options.opencodeDir = readNext(argv, i, arg);
+      i += 1;
+    } else if (arg === "--cursor-dir") {
+      options.cursorDir = readNext(argv, i, arg);
+      i += 1;
+    } else if (arg === "--evidence-dir") {
+      options.evidenceDirs.push(readNext(argv, i, arg));
+      i += 1;
     } else if (arg === "--unused-days") {
       options.unusedDays = readNumber(argv, i, arg);
       i += 1;
     } else if (arg === "--unused-installed-days") {
       options.unusedInstalledDays = readNumber(argv, i, arg);
+      i += 1;
+    } else if (arg === "--protect-weak-days") {
+      options.protectWeakDays = readNumber(argv, i, arg);
       i += 1;
     } else if (arg === "--limit") {
       options.limit = readNumber(argv, i, arg);
@@ -146,8 +176,8 @@ export function parseArgs(argv) {
     }
   }
 
-  if (!["codex", "claude", "all"].includes(options.source)) {
-    throw new Error("--source must be codex, claude, or all");
+  if (!["codex", "claude", "opencode", "cursor", "filesystem", "all"].includes(options.source)) {
+    throw new Error("--source must be codex, claude, opencode, cursor, filesystem, or all");
   }
   if (options.apply && options.json) {
     throw new Error("--apply cannot be combined with --json");
@@ -170,6 +200,16 @@ export function parseArgs(argv) {
     skillsDir: path.resolve(expandHome(options.skillsDir)),
     codexDir: path.resolve(expandHome(options.codexDir)),
     claudeDir: path.resolve(expandHome(options.claudeDir)),
+    claudeAppDir: path.resolve(expandHome(options.claudeAppDir)),
+    opencodeDir: path.resolve(expandHome(options.opencodeDir)),
+    cursorDir: path.resolve(expandHome(options.cursorDir)),
+    evidenceDirs: options.evidenceDirs.flatMap((value) =>
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => path.resolve(expandHome(item))),
+    ),
     csv: options.csv ? path.resolve(expandHome(options.csv)) : "",
     snapshot: options.snapshot ? path.resolve(expandHome(options.snapshot)) : "",
     stateDir: path.resolve(expandHome(options.stateDir)),

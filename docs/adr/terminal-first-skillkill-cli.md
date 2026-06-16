@@ -43,10 +43,15 @@ Build `skillkill` as a terminal-first CLI project under
 The CLI will:
 
 - Scan local installed agent skills.
-- Use Codex and Claude transcript evidence by default.
+- Use Codex, Claude, OpenCode, Cursor, and explicit local filesystem evidence
+  roots by default where safe local stores are known.
 - Treat Codex injected skill blocks and Claude `attributionSkill` as strong
   usage evidence.
-- Treat `atime` and raw path mentions as weak context only.
+- Treat OpenCode message paths, Cursor chat-store paths, explicit
+  `--evidence-dir` path matches, `atime`, and raw path mentions as weak
+  evidence.
+- Defer cleanup for skills with recent weak evidence, while keeping that
+  evidence labeled as lower confidence than native provider attribution.
 - Open an interactive terminal review by default when stdin/stdout are terminals.
 - Print a static dry-run candidate table when output is piped or
   `--no-interactive` is passed.
@@ -58,6 +63,8 @@ The CLI will:
 - Support `--omit`, `--whitelist`, `--omit-file`, and a default persistent
   omit file at `~/.config/skillkill/omit`.
 - Support `--commands`, `--json`, `--csv`, and `--snapshot`.
+- Support `--source opencode`, `--source cursor`, `--source filesystem`,
+  `--evidence-dir`, and `--protect-weak-days`.
 - Stay scoped to whole skill directories, not files inside a skill.
 - Treat richer TUI search/filter and risk-tier features as later improvements.
 

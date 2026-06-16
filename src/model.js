@@ -35,7 +35,13 @@ export function timestampFromRecord(record) {
     record.timestamp ??
       record.created_at ??
       record.createdAt ??
+      record.created ??
+      record.updated_at ??
+      record.updatedAt ??
       record.started_at ??
+      record.lastActivityAt ??
+      record.time?.updated ??
+      record.time?.created ??
       record.ts,
   );
 }
@@ -58,34 +64,59 @@ export function ageDays(value, now = new Date()) {
 
 export function buildRows(skills, options) {
   const now = options.now || new Date();
+  const protectWeakDays = options.protectWeakDays ?? options.unusedDays;
   return [...skills.values()]
     .map((usage) => {
       const lastStrong = latest(usage.strong);
       const lastWeak = latest(usage.weak);
+      const lastSignal = latest([...usage.strong, ...usage.weak]);
       const codexStrongCount = usage.strong.filter((item) =>
         item.kind.startsWith("codex_"),
       ).length;
       const claudeStrongCount = usage.strong.filter((item) =>
         item.kind.startsWith("claude_"),
       ).length;
+      const opencodeWeakCount = usage.weak.filter((item) =>
+        item.kind.startsWith("opencode_"),
+      ).length;
+      const cursorWeakCount = usage.weak.filter((item) =>
+        item.kind.startsWith("cursor_"),
+      ).length;
+      const filesystemWeakCount = usage.weak.filter((item) =>
+        item.kind.startsWith("filesystem_"),
+      ).length;
       const strongAgeDays = ageDays(lastStrong, now);
+      const weakAgeDays = ageDays(lastWeak, now);
+      const signalAgeDays = ageDays(lastSignal, now);
       const installedAt = usage.birthtime || usage.mtime;
       const installedAgeDays = ageDays(installedAt, now);
       const dotPrefixed = usage.skill.startsWith(".");
+      const recentWeak =
+        lastWeak && weakAgeDays !== null && weakAgeDays <= protectWeakDays;
 
       let cleanupCandidate = false;
       let cleanupReason = "";
       if (lastStrong && strongAgeDays > options.unusedDays) {
-        cleanupCandidate = true;
-        cleanupReason = `last strong use ${strongAgeDays} days ago`;
+        if (recentWeak) {
+          cleanupReason = `recent weak signal ${weakAgeDays} days ago`;
+        } else {
+          cleanupCandidate = true;
+          cleanupReason = `last strong use ${strongAgeDays} days ago`;
+        }
       } else if (
         !lastStrong &&
         !dotPrefixed &&
         installedAgeDays !== null &&
         installedAgeDays >= options.unusedInstalledDays
       ) {
-        cleanupCandidate = true;
-        cleanupReason = `never used; installed ${installedAgeDays} days ago`;
+        if (recentWeak) {
+          cleanupReason = `recent weak signal ${weakAgeDays} days ago`;
+        } else {
+          cleanupCandidate = true;
+          cleanupReason = lastWeak
+            ? `no strong use; last weak signal ${weakAgeDays} days ago`
+            : `never used; installed ${installedAgeDays} days ago`;
+        }
       }
 
       const row = {
@@ -98,7 +129,13 @@ export function buildRows(skills, options) {
         last_strong_read: formatDate(lastStrong),
         strong_age_days: strongAgeDays,
         weak_path_refs: usage.weak.length,
+        opencode_weak_count: opencodeWeakCount,
+        cursor_weak_count: cursorWeakCount,
+        filesystem_weak_count: filesystemWeakCount,
         last_path_ref: formatDate(lastWeak),
+        weak_age_days: weakAgeDays,
+        last_signal_at: formatDate(lastSignal),
+        signal_age_days: signalAgeDays,
         atime: formatDate(usage.atime),
         atime_age_days: ageDays(usage.atime, now),
         installed_at: formatDate(installedAt),
@@ -149,6 +186,9 @@ export function buildRows(skills, options) {
 export function payloadFor(rows, options, scanStats, now = new Date()) {
   const candidates = rows.filter((row) => row.cleanup_candidate);
   const omitted = rows.filter((row) => row.omitted);
+  const scanBuckets = Object.values(scanStats).filter(
+    (value) => value && typeof value === "object" && "matchedLines" in value,
+  );
   return {
     title: "Skill Cleanup",
     generatedAt: now.toISOString(),
@@ -165,12 +205,20 @@ export function payloadFor(rows, options, scanStats, now = new Date()) {
       neverUsedCandidates: candidates.filter((row) =>
         row.cleanup_reason.startsWith("never used"),
       ).length,
+      weakOnlyCandidates: candidates.filter((row) =>
+        row.cleanup_reason.startsWith("no strong use"),
+      ).length,
+      recentWeakProtected: rows.filter((row) =>
+        row.cleanup_reason.startsWith("recent weak signal"),
+      ).length,
       codexStrong: rows.reduce((sum, row) => sum + row.codex_strong_count, 0),
       claudeStrong: rows.reduce((sum, row) => sum + row.claude_strong_count, 0),
+      opencodeWeak: rows.reduce((sum, row) => sum + row.opencode_weak_count, 0),
+      cursorWeak: rows.reduce((sum, row) => sum + row.cursor_weak_count, 0),
+      filesystemWeak: rows.reduce((sum, row) => sum + row.filesystem_weak_count, 0),
       scanMs: scanStats.elapsedMs,
-      matchedLines: scanStats.codex.matchedLines + scanStats.claude.matchedLines,
-      parsedRecords:
-        scanStats.codex.parsedRecords + scanStats.claude.parsedRecords,
+      matchedLines: scanBuckets.reduce((sum, bucket) => sum + bucket.matchedLines, 0),
+      parsedRecords: scanBuckets.reduce((sum, bucket) => sum + bucket.parsedRecords, 0),
     },
     scan: scanStats,
     rows,

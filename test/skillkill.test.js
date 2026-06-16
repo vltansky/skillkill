@@ -18,6 +18,10 @@ function makeFixture() {
   const skillsDir = path.join(root, "skills");
   const codexDir = path.join(root, "codex");
   const claudeDir = path.join(root, "claude");
+  const claudeAppDir = path.join(root, "claude-app");
+  const opencodeDir = path.join(root, "opencode");
+  const cursorDir = path.join(root, "cursor");
+  const evidenceDir = path.join(root, "evidence");
   const stateDir = path.join(root, "state");
   fs.mkdirSync(path.join(codexDir, "sessions"), { recursive: true });
   fs.mkdirSync(path.join(claudeDir, "projects"), { recursive: true });
@@ -60,7 +64,19 @@ function makeFixture() {
     })}\n`,
   );
 
-  return { root, skillsDir, codexDir, claudeDir, stateDir, skillPath };
+  return {
+    root,
+    skillsDir,
+    codexDir,
+    claudeDir,
+    claudeAppDir,
+    opencodeDir,
+    cursorDir,
+    evidenceDir,
+    stateDir,
+    skillPath,
+    writeSkill,
+  };
 }
 
 test("builds rows from strong Codex and Claude evidence", async () => {
@@ -70,6 +86,9 @@ test("builds rows from strong Codex and Claude evidence", async () => {
     skillsDir: fixture.skillsDir,
     codexDir: fixture.codexDir,
     claudeDir: fixture.claudeDir,
+    claudeAppDir: fixture.claudeAppDir,
+    opencodeDir: fixture.opencodeDir,
+    cursorDir: fixture.cursorDir,
     source: "all",
     fullScan: true,
   });
@@ -90,11 +109,86 @@ test("builds rows from strong Codex and Claude evidence", async () => {
 
   assert.equal(byName.get("weak-only").strong_count, 0);
   assert.equal(byName.get("weak-only").weak_path_refs, 1);
-  assert.equal(byName.get("weak-only").cleanup_candidate, true);
-  assert.match(byName.get("weak-only").cleanup_reason, /never used/);
+  assert.equal(byName.get("weak-only").cleanup_candidate, false);
+  assert.match(byName.get("weak-only").cleanup_reason, /recent weak signal/);
 
   assert.equal(byName.get(".system-skill").cleanup_candidate, false);
   assert.equal(rows[0].cleanup_candidate, true);
+});
+
+test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async () => {
+  const fixture = makeFixture();
+  for (const name of [
+    "claude-app-skill",
+    "opencode-only",
+    "cursor-only",
+    "extra-evidence",
+  ]) {
+    fixture.writeSkill(name);
+  }
+
+  const claudeSessionDir = path.join(fixture.claudeAppDir, "claude-code-sessions", "session");
+  fs.mkdirSync(claudeSessionDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(claudeSessionDir, "conversation.json"),
+    JSON.stringify({
+      lastActivityAt: "2026-06-13T00:00:00Z",
+      events: [{ attributionSkill: "claude-app-skill" }],
+    }),
+  );
+
+  const opencodeMessageDir = path.join(fixture.opencodeDir, "storage", "message", "session");
+  fs.mkdirSync(opencodeMessageDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(opencodeMessageDir, "message.json"),
+    JSON.stringify({
+      time: { created: "2026-06-12T00:00:00Z" },
+      body: `Loaded ${fixture.skillPath("opencode-only")}`,
+    }),
+  );
+
+  const cursorChatDir = path.join(fixture.cursorDir, "chat");
+  fs.mkdirSync(cursorChatDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(cursorChatDir, "store.db"),
+    `blob text with ${fixture.skillPath("cursor-only")}`,
+  );
+
+  fs.mkdirSync(fixture.evidenceDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(fixture.evidenceDir, "agent.log"),
+    `referenced ${fixture.skillPath("extra-evidence")}`,
+  );
+
+  const skills = collectSkills(fixture.skillsDir);
+  const stats = await scanEvidence(skills, {
+    skillsDir: fixture.skillsDir,
+    codexDir: fixture.codexDir,
+    claudeDir: fixture.claudeDir,
+    claudeAppDir: fixture.claudeAppDir,
+    opencodeDir: fixture.opencodeDir,
+    cursorDir: fixture.cursorDir,
+    evidenceDirs: [fixture.evidenceDir],
+    source: "all",
+    fullScan: false,
+  });
+  const rows = buildRows(skills, {
+    unusedDays: 45,
+    unusedInstalledDays: 0,
+    now: NOW,
+  });
+  const byName = new Map(rows.map((row) => [row.skill, row]));
+
+  assert.equal(byName.get("claude-app-skill").claude_strong_count, 1);
+  assert.equal(byName.get("claude-app-skill").last_strong_read, "2026-06-13 00:00:00");
+  assert.equal(byName.get("opencode-only").opencode_weak_count, 1);
+  assert.equal(byName.get("opencode-only").cleanup_candidate, false);
+  assert.match(byName.get("opencode-only").cleanup_reason, /recent weak signal/);
+  assert.equal(byName.get("cursor-only").cursor_weak_count, 1);
+  assert.equal(byName.get("extra-evidence").filesystem_weak_count, 1);
+  assert.equal(stats.opencode.evidence, 1);
+  assert.equal(stats.cursor.evidence, 1);
+  assert.equal(stats.filesystem.evidence, 1);
 });
 
 test("formats cleanup commands for candidates only", async () => {
@@ -104,6 +198,9 @@ test("formats cleanup commands for candidates only", async () => {
     skillsDir: fixture.skillsDir,
     codexDir: fixture.codexDir,
     claudeDir: fixture.claudeDir,
+    claudeAppDir: fixture.claudeAppDir,
+    opencodeDir: fixture.opencodeDir,
+    cursorDir: fixture.cursorDir,
     source: "all",
     fullScan: true,
   });
@@ -130,6 +227,9 @@ test("omits cleanup candidates from cli patterns and omit files", async () => {
     skillsDir: fixture.skillsDir,
     codexDir: fixture.codexDir,
     claudeDir: fixture.claudeDir,
+    claudeAppDir: fixture.claudeAppDir,
+    opencodeDir: fixture.opencodeDir,
+    cursorDir: fixture.cursorDir,
     source: "all",
     fullScan: true,
   });
@@ -165,6 +265,12 @@ test("whitelist alias removes skills from json and commands output", async () =>
       fixture.codexDir,
       "--claude-dir",
       fixture.claudeDir,
+      "--claude-app-dir",
+      fixture.claudeAppDir,
+      "--opencode-dir",
+      fixture.opencodeDir,
+      "--cursor-dir",
+      fixture.cursorDir,
       "--unused-installed-days",
       "0",
       "--whitelist",
@@ -195,6 +301,12 @@ test("whitelist alias removes skills from json and commands output", async () =>
       fixture.codexDir,
       "--claude-dir",
       fixture.claudeDir,
+      "--claude-app-dir",
+      fixture.claudeAppDir,
+      "--opencode-dir",
+      fixture.opencodeDir,
+      "--cursor-dir",
+      fixture.cursorDir,
       "--unused-installed-days",
       "0",
       "--omit",
@@ -221,6 +333,9 @@ test("renders interactive cleanup candidates", async () => {
     skillsDir: fixture.skillsDir,
     codexDir: fixture.codexDir,
     claudeDir: fixture.claudeDir,
+    claudeAppDir: fixture.claudeAppDir,
+    opencodeDir: fixture.opencodeDir,
+    cursorDir: fixture.cursorDir,
     source: "all",
     fullScan: true,
   });
@@ -237,7 +352,7 @@ test("renders interactive cleanup candidates", async () => {
   );
 
   assert.match(screen, /skillkill interactive cleanup/);
-  assert.match(screen, /3 cleanup candidates/);
+  assert.match(screen, /2 cleanup candidates/);
   assert.match(screen, /\[x\] stale-skill/);
   assert.match(screen, /space\/x select/);
   assert.doesNotMatch(screen, /recent-skill/);
@@ -282,6 +397,12 @@ test("apply quarantines candidates and undo restores them", async () => {
       fixture.codexDir,
       "--claude-dir",
       fixture.claudeDir,
+      "--claude-app-dir",
+      fixture.claudeAppDir,
+      "--opencode-dir",
+      fixture.opencodeDir,
+      "--cursor-dir",
+      fixture.cursorDir,
       "--unused-installed-days",
       "0",
       "--state-dir",
@@ -296,11 +417,11 @@ test("apply quarantines candidates and undo restores them", async () => {
     },
   );
 
-  assert.match(stdout, /Applying cleanup to 3 candidates/);
+  assert.match(stdout, /Applying cleanup to 2 candidates/);
   assert.match(stdout, /Undo manifest:/);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), false);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), false);
-  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("weak-only"))), false);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("weak-only"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("recent-skill"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath(".system-skill"))), true);
 
@@ -319,7 +440,7 @@ test("apply quarantines candidates and undo restores them", async () => {
     },
   );
 
-  assert.match(undoStdout, /Restored 3 skills/);
+  assert.match(undoStdout, /Restored 2 skills/);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("weak-only"))), true);

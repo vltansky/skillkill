@@ -17,6 +17,8 @@ a skill is still useful.
 - Provide a terminal-first cleanup workflow.
 - Keep the default command non-destructive.
 - Use strong transcript evidence for usage decisions.
+- Use weak local evidence to avoid risky cleanup when provider-native signals
+  are missing.
 - Produce copy-pasteable removal commands.
 - Support machine-readable output for reports and automation.
 - Make cleanup explicit, reversible, and easy to audit.
@@ -36,14 +38,19 @@ Strong evidence:
 
 - Codex transcript JSONL contains an injected `<skill><name>...<path>...` block.
 - Claude transcript JSONL contains `attributionSkill`.
+- Claude app session JSON contains `attributionSkill`.
 
 Weak evidence:
 
 - Raw path mentions in chat history.
+- OpenCode message JSON path mentions.
+- Cursor chat store path mentions.
+- User-provided `--evidence-dir` path mentions.
 - `SKILL.md` access time.
 
-Weak evidence may be displayed as context, but must not make a skill safe or
-unsafe by itself.
+Weak evidence may be displayed as context. Recent weak evidence defers cleanup,
+but it does not become strong evidence and should be labeled as lower
+confidence.
 
 ## Candidate Rules
 
@@ -51,6 +58,7 @@ Default thresholds:
 
 - Previously used skills become stale after 45 days without strong evidence.
 - Never-used skills become candidates 7 days after install.
+- Skills with weak evidence in the last 45 days are not automatic candidates.
 - Dot-prefixed system skills are preserved by default.
 
 A candidate row should include:
@@ -69,11 +77,15 @@ A candidate row should include:
 skillkill
 skillkill --source codex
 skillkill --source claude
+skillkill --source opencode
+skillkill --source cursor
+skillkill --source filesystem --evidence-dir ~/.continue
 skillkill --omit simplify
 skillkill --whitelist "ck-*"
 skillkill --no-interactive
 skillkill --unused-days 60
 skillkill --unused-installed-days 14
+skillkill --protect-weak-days 30
 skillkill --commands
 skillkill --json
 skillkill --csv /tmp/skillkill.csv
@@ -90,6 +102,11 @@ Suggested semantics:
 - `--json`: print full payload for automation.
 - `--csv`: write tabular rows for spreadsheet review.
 - `--snapshot`: append JSONL scan results for longitudinal tracking.
+- `--source`: choose Codex, Claude, OpenCode, Cursor, extra filesystem roots,
+  or all known local sources.
+- `--evidence-dir`: add local transcript/log directories that should count as
+  weak path-reference evidence.
+- `--protect-weak-days`: keep recent weak evidence out of cleanup candidates.
 - `--omit` / `--whitelist`: remove exact or glob-matched skill names and paths
   from cleanup candidates.
 - `--omit-file`: load persistent omit patterns from a file.

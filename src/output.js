@@ -5,8 +5,9 @@ export function formatTable(rows, limit) {
   const columns = [
     ["skill", 30],
     ["last_strong_read", 19],
-    ["codex", 6],
-    ["claude", 6],
+    ["last_signal_at", 19],
+    ["strong", 6],
+    ["weak", 5],
     ["candidate", 9],
     ["reason", 34],
     ["path", 0],
@@ -20,8 +21,9 @@ export function formatTable(rows, limit) {
     const values = [
       row.skill,
       row.last_strong_read || "-",
-      String(row.codex_strong_count),
-      String(row.claude_strong_count),
+      row.last_signal_at || "-",
+      String(row.strong_count),
+      String(row.weak_path_refs),
       row.cleanup_candidate ? "yes" : "no",
       row.cleanup_reason || "-",
       row.path,
@@ -39,7 +41,7 @@ export function formatTable(rows, limit) {
 
   lines.push(
     "",
-    "strong = Codex injected skill block or Claude attributionSkill; atime is only a weak clue.",
+    "strong = provider-native skill selection; weak = local path reference in chats/session stores.",
   );
 
   const commands = rows
@@ -89,4 +91,3 @@ export function writeSnapshot(file, payload, options) {
     })}\n`,
   );
 }
-

@@ -1,6 +1,6 @@
 {
   "name": "skill-prune",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Alias package for skillkill.",
   "type": "module",
   "repository": {
@@ -23,7 +23,7 @@
     "build": "npm pack --dry-run"
   },
   "dependencies": {
-    "skillkill": "0.2.1"
+    "skillkill": "0.3.0"
   },
   "license": "MIT"
 }
