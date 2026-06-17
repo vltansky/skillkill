@@ -78,6 +78,84 @@ function estimateDescriptionTokens(description) {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
+function evidenceKey(item) {
+  return [
+    item.kind || "",
+    item.source || "",
+    item.sourceFile || "",
+    item.sourceLine || "",
+    item.ts ? item.ts.toISOString() : "",
+  ].join("\0");
+}
+
+function uniqueEvidence(items) {
+  const seen = new Set();
+  const result = [];
+  for (const item of items) {
+    const key = evidenceKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+function newestDate(dates) {
+  const values = dates.filter(Boolean);
+  if (values.length === 0) return null;
+  return new Date(Math.max(...values.map((date) => date.getTime())));
+}
+
+function usageGroupKey(usage) {
+  if (usage.fingerprint) return `${usage.skill}\0fingerprint:${usage.fingerprint}`;
+  if (usage.isSymlink && usage.linkTarget) return `${usage.skill}\0symlink:${usage.linkTarget}`;
+  return `${usage.skill}\0install:${usage.id || usage.path}`;
+}
+
+function groupUsages(usages) {
+  const groups = new Map();
+  for (const usage of usages) {
+    const key = usageGroupKey(usage);
+    const existing = groups.get(key);
+    const install = {
+      id: usage.id || usage.path,
+      installRoot: usage.installRoot || "",
+      path: usage.path,
+      skillDir: path.dirname(usage.path),
+      isSymlink: Boolean(usage.isSymlink),
+      linkTarget: usage.linkTarget || "",
+      fingerprint: usage.fingerprint || "",
+      atime: usage.atime,
+      birthtime: usage.birthtime,
+      mtime: usage.mtime,
+    };
+    if (!existing) {
+      groups.set(key, {
+        ...usage,
+        id: key,
+        installRoot: install.installRoot,
+        path: install.path,
+        isSymlink: install.isSymlink,
+        linkTarget: install.linkTarget,
+        fingerprint: install.fingerprint,
+        installs: [install],
+        strong: uniqueEvidence(usage.strong),
+        weak: uniqueEvidence(usage.weak),
+      });
+      continue;
+    }
+
+    existing.installs.push(install);
+    existing.strong = uniqueEvidence([...existing.strong, ...usage.strong]);
+    existing.weak = uniqueEvidence([...existing.weak, ...usage.weak]);
+    if (!existing.description && usage.description) existing.description = usage.description;
+    existing.birthtime = newestDate(existing.installs.map((item) => item.birthtime));
+    existing.mtime = newestDate(existing.installs.map((item) => item.mtime));
+    existing.atime = newestDate(existing.installs.map((item) => item.atime));
+  }
+  return [...groups.values()];
+}
+
 function riskFor({ cleanupCandidate, cleanupReason, dotPrefixed, recentWeak }) {
   if (dotPrefixed || recentWeak) return "protected";
   if (!cleanupCandidate) return "none";
@@ -100,7 +178,7 @@ export function buildRows(skills, options) {
   const protectWeakDays = options.protectWeakDays ?? options.unusedDays;
   const savingsDays = options.savingsDays ?? 30;
   const usageTokenWindowDays = 14;
-  return [...skills.values()]
+  return groupUsages([...skills.values()])
     .map((usage) => {
       const lastStrongEvidence = latestItem(usage.strong);
       const lastStrong = lastStrongEvidence?.ts || null;
@@ -174,6 +252,10 @@ export function buildRows(skills, options) {
         install_root: usage.installRoot || "",
         path: usage.path,
         skill_dir: path.dirname(usage.path),
+        install_count: usage.installs.length,
+        installs: usage.installs,
+        paths: usage.installs.map((item) => item.path),
+        skill_dirs: usage.installs.map((item) => item.skillDir),
         is_symlink: Boolean(usage.isSymlink),
         link_target: usage.linkTarget || "",
         description: usage.description || "",
@@ -219,7 +301,9 @@ export function buildRows(skills, options) {
         mtime_age_days: ageDays(usage.mtime, now),
         cleanup_candidate: cleanupCandidate,
         cleanup_reason: cleanupReason,
-        remove_command: `rm -rf ${shellQuote(path.dirname(usage.path))}`,
+        remove_command: usage.installs
+          .map((item) => `rm -rf ${shellQuote(item.skillDir)}`)
+          .join(" && "),
       };
       row.risk = riskFor({
         cleanupCandidate,

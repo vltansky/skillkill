@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import { existingRoots, jsonStrings, sourceLabel, walkFiles, withinRoot } from "./fs-utils.js";
 import { ageDays, timestampFromRecord } from "./model.js";
 
@@ -291,6 +292,21 @@ export function listSkillFiles(skillsDir) {
     .filter((entry) => fs.existsSync(entry.file));
 }
 
+function directoryFingerprint(root) {
+  const hash = crypto.createHash("sha256");
+  const files = walkFiles(root, () => true)
+    .map((file) => path.relative(root, file))
+    .sort();
+  for (const file of files) {
+    const fullPath = path.join(root, file);
+    hash.update(file);
+    hash.update("\0");
+    hash.update(fs.readFileSync(fullPath));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
 export function collectSkills(skillsDirs) {
   const skills = new Map();
   for (const entry of skillDirs(skillsDirs).flatMap((skillsDir) => listSkillFiles(skillsDir))) {
@@ -307,6 +323,7 @@ export function collectSkills(skillsDirs) {
       path: entry.file,
       isSymlink,
       linkTarget: isSymlink ? fs.realpathSync(skillDir) : "",
+      fingerprint: directoryFingerprint(skillDir),
       description: typeof metadata.description === "string" ? metadata.description : "",
       atime: stat.atime,
       birthtime: isSymlink ? linkStat.birthtime : stat.birthtime,

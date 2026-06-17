@@ -13,6 +13,7 @@ import { renderInteractiveScreen, shouldRunInteractive } from "../src/interactiv
 import { buildRows } from "../src/model.js";
 import { loadOmitPatterns } from "../src/omit.js";
 import { collectSkills, scanEvidence } from "../src/scan.js";
+import { quarantineCandidates } from "../src/quarantine.js";
 import { renderInteractiveUndoScreen } from "../src/undo-interactive.js";
 import { formatCommands, formatTable } from "../src/output.js";
 import { renderLogo } from "../src/logo.js";
@@ -385,6 +386,84 @@ test("collects skills from multiple install roots and matches their path evidenc
   assert.equal(byName.get("cursor-installed").cursor_weak_count, 1);
   assert.equal(stats.cursor.evidence >= 1, true);
   assert.equal(fs.existsSync(claudeSkill), true);
+});
+
+test("groups identical duplicate skill installs", () => {
+  const fixture = makeFixture();
+  fixture.writeSkillAt(fixture.claudeSkillsDir, "duplicate-skill");
+  fixture.writeSkillAt(fixture.codexSkillsDir, "duplicate-skill");
+
+  const roots = [fixture.claudeSkillsDir, fixture.codexSkillsDir];
+  const rows = buildRows(collectSkills(roots), {
+    unusedDays: 45,
+    unusedInstalledDays: 0,
+    now: NOW,
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].skill, "duplicate-skill");
+  assert.equal(rows[0].install_count, 2);
+  assert.match(formatTable(rows, 5, { recentNewChats: 2 }), /2 installs:/);
+  assert.equal(formatCommands(rows).match(/rm -rf/g).length, 2);
+});
+
+test("keeps changed duplicate skill installs separate", () => {
+  const fixture = makeFixture();
+  fixture.writeSkillAt(fixture.claudeSkillsDir, "duplicate-skill");
+  const changedSkill = fixture.writeSkillAt(fixture.codexSkillsDir, "duplicate-skill");
+  fs.appendFileSync(changedSkill, "\nChanged local copy\n");
+
+  const roots = [fixture.claudeSkillsDir, fixture.codexSkillsDir];
+  const rows = buildRows(collectSkills(roots), {
+    unusedDays: 45,
+    unusedInstalledDays: 0,
+    now: NOW,
+  });
+
+  assert.equal(rows.length, 2);
+  assert.equal(rows.every((row) => row.skill === "duplicate-skill"), true);
+  assert.equal(rows.every((row) => row.install_count === 1), true);
+  assert.doesNotMatch(formatTable(rows, 5, { recentNewChats: 2 }), /2 installs:/);
+});
+
+test("groups symlinked duplicate skill installs with the same target", () => {
+  const fixture = makeFixture();
+  const targetDir = path.join(fixture.root, "shared-targets", "duplicate-skill");
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(targetDir, "SKILL.md"),
+    "---\nname: duplicate-skill\ndescription: duplicate-skill fixture skill for cleanup tests\n---\n# duplicate-skill\n",
+  );
+  fs.mkdirSync(fixture.claudeSkillsDir, { recursive: true });
+  fs.mkdirSync(fixture.codexSkillsDir, { recursive: true });
+  fs.symlinkSync(targetDir, path.join(fixture.claudeSkillsDir, "duplicate-skill"));
+  fs.symlinkSync(targetDir, path.join(fixture.codexSkillsDir, "duplicate-skill"));
+
+  const roots = [fixture.claudeSkillsDir, fixture.codexSkillsDir];
+  const rows = buildRows(collectSkills(roots), {
+    unusedDays: 45,
+    unusedInstalledDays: 0,
+    now: NOW,
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].skill, "duplicate-skill");
+  assert.equal(rows[0].install_count, 2);
+  assert.equal(rows[0].cleanup_candidate, true);
+  assert.match(formatTable(rows, 5, { recentNewChats: 2 }), /2 installs:/);
+  assert.equal(formatCommands(rows).match(/rm -rf/g).length, 2);
+
+  const result = quarantineCandidates(rows, {
+    stateDir: fixture.stateDir,
+    now: NOW,
+    recentNewChats: 2,
+    savingsDays: 30,
+    skillsDirs: roots,
+  });
+  assert.equal(result.count, 2);
+  assert.equal(fs.existsSync(path.join(fixture.claudeSkillsDir, "duplicate-skill")), false);
+  assert.equal(fs.existsSync(path.join(fixture.codexSkillsDir, "duplicate-skill")), false);
+  assert.equal(fs.existsSync(path.join(targetDir, "SKILL.md")), true);
 });
 
 test("formats cleanup commands for candidates only", async () => {

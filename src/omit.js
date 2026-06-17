@@ -80,6 +80,14 @@ export function loadOmitPatterns(options) {
 }
 
 export function findOmitMatch(row, omitPatterns = []) {
-  const values = [row.skill, row.path, row.skill_dir, row.install_root, row.link_target].filter(Boolean);
+  const values = [
+    row.skill,
+    row.path,
+    ...(row.paths || []),
+    row.skill_dir,
+    ...(row.skill_dirs || []),
+    row.install_root,
+    row.link_target,
+  ].filter(Boolean);
   return omitPatterns.find((entry) => values.some((value) => entry.matcher.test(value))) || null;
 }

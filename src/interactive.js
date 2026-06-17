@@ -43,7 +43,9 @@ function rowSearchText(row) {
     row.skill,
     row.install_root,
     row.path,
+    ...(row.paths || []),
     row.skill_dir,
+    ...(row.skill_dirs || []),
     row.link_target,
     row.cleanup_reason,
     row.risk,
@@ -249,8 +251,9 @@ function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
     lines.push(color.good("  No selected cleanup candidates."));
   } else {
     for (const row of shown) {
+      const installs = row.install_count > 1 ? ` ${formatNumber(row.install_count)} installs` : "";
       lines.push(
-        `  - ${color.good(clip(row.skill, skillWidth))} ${color.token(clip(`${formatNumber(row.description_token_cost)} tokens`, 16))} ${clip(row.cleanup_reason, reasonWidth)}`,
+        `  - ${color.good(clip(row.skill, skillWidth))} ${color.token(clip(`${formatNumber(row.description_token_cost)} tokens${installs}`, 28))} ${clip(row.cleanup_reason, reasonWidth)}`,
       );
     }
     if (hidden) lines.push(color.dim(`  ... and ${formatNumber(hidden)} more`));

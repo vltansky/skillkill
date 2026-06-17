@@ -23,6 +23,11 @@ function verifiedUseCell(row, width, links) {
   return cell(`${date} ${hyperlink(label, row.last_verified_href, links)}`, date.length + 1 + label.length);
 }
 
+function pathCell(row) {
+  if (!row.install_count || row.install_count === 1) return row.path;
+  return `${row.install_count} installs: ${row.paths.join(", ")}`;
+}
+
 function fitCell(value, width) {
   if (!width) return typeof value === "object" ? value.text : String(value);
   if (typeof value === "object") {
@@ -69,7 +74,7 @@ export function formatTable(rows, limit, options = {}) {
       formatNumber(row.path_mention_count),
       row.cleanup_candidate ? "yes" : "no",
       row.cleanup_reason || "-",
-      row.path,
+      pathCell(row),
     ];
     lines.push(
       values

@@ -39,15 +39,30 @@ function pathExistsOrSymlink(file) {
 }
 
 function cleanupEntry(row, extra = {}) {
+  const { install = {}, ...rest } = extra;
   return {
     skill: row.skill,
     reason: row.cleanup_reason,
-    originalPath: row.skill_dir,
+    originalPath: install.skillDir || row.skill_dir,
     descriptionTokenCost: row.description_token_cost,
     recentStrongCount: row.recent_strong_count,
     recentWeakCount: row.recent_weak_count,
-    ...extra,
+    ...rest,
   };
+}
+
+function rowInstalls(row) {
+  if (Array.isArray(row.installs) && row.installs.length > 0) return row.installs;
+  return [
+    {
+      id: row.id || row.skill_dir,
+      skillDir: row.skill_dir,
+      path: row.path,
+      installRoot: row.install_root,
+      isSymlink: row.is_symlink,
+      linkTarget: row.link_target,
+    },
+  ];
 }
 
 export function listCleanupRuns(stateDir) {
@@ -117,18 +132,24 @@ export function quarantineCandidates(rows, options) {
   const entries = [];
 
   fs.mkdirSync(itemsDir, { recursive: true });
-  for (const [index, row] of candidates.entries()) {
-    const itemDir = path.join(
-      itemsDir,
-      `${String(index + 1).padStart(4, "0")}-${row.skill.replaceAll("/", "_")}`,
-    );
-    if (!pathExistsOrSymlink(row.skill_dir)) continue;
-    fs.renameSync(row.skill_dir, itemDir);
-    entries.push(
-      cleanupEntry(row, {
-        quarantinedPath: itemDir,
-      }),
-    );
+  let itemIndex = 0;
+  for (const row of candidates) {
+    for (const install of rowInstalls(row)) {
+      itemIndex += 1;
+      const itemDir = path.join(
+        itemsDir,
+        `${String(itemIndex).padStart(4, "0")}-${row.skill.replaceAll("/", "_")}`,
+      );
+      if (!pathExistsOrSymlink(install.skillDir)) continue;
+      fs.renameSync(install.skillDir, itemDir);
+      entries.push(
+        cleanupEntry(row, {
+          install,
+          installRoot: install.installRoot || "",
+          quarantinedPath: itemDir,
+        }),
+      );
+    }
   }
 
   const vercelLocks = removeSkillsFromVercelLocks(
@@ -181,9 +202,17 @@ export function deleteCandidates(rows, options) {
 
   const entries = [];
   for (const row of candidates) {
-    if (!pathExistsOrSymlink(row.skill_dir)) continue;
-    fs.rmSync(row.skill_dir, { recursive: true, force: false });
-    entries.push(cleanupEntry(row, { deletedPath: row.skill_dir }));
+    for (const install of rowInstalls(row)) {
+      if (!pathExistsOrSymlink(install.skillDir)) continue;
+      fs.rmSync(install.skillDir, { recursive: true, force: false });
+      entries.push(
+        cleanupEntry(row, {
+          install,
+          installRoot: install.installRoot || "",
+          deletedPath: install.skillDir,
+        }),
+      );
+    }
   }
 
   const vercelLocks = removeSkillsFromVercelLocks(
