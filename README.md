@@ -76,6 +76,7 @@ attribution.
 - [Plan](docs/plan.md)
 - [CLI design](docs/design/skillkill-cli.md)
 - [ADR: Build `skillkill` as a terminal-first cleanup CLI](docs/adr/terminal-first-skillkill-cli.md)
+- [ADR: Classify skill usage evidence by confidence](docs/adr/classify-skill-usage-evidence.md)
 - [Research: tools like `npx npkill`](docs/research/npkill-like-tools.md)
 - [Research: skill invocation signals](docs/research/skill-invocation-signals.md)
 
