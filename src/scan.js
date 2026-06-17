@@ -1165,8 +1165,11 @@ async function scanCodex(skills, options, stats) {
     "codex",
     countRecentFiles(roots, (file) => file.endsWith(".jsonl"), jsonlStartTimestamp, options),
   );
-  const pattern =
-    `<skill>|/scripts/|\\\\n\\s*(?:[+>\\-]\\s*)?(?:\\S+/)?${READ_COMMAND_PATTERN}\\s+(?:[-'"./~$\\\\]|[A-Za-z]:).*SKILL\\.md`;
+  const pattern = [
+    skillPathSearchPattern(rootsForSkills),
+    String.raw`/scripts/`,
+    String.raw`\\n\s*(?:[+>\-]\s*)?(?:\S+/)?${READ_COMMAND_PATTERN}\s+(?:[-'"./~$\\]|[A-Za-z]:).*SKILL\.md`,
+  ].join("|");
 
   await scanMatchingJsonLines(
     roots,

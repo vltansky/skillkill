@@ -372,6 +372,51 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   return `${lines.join("\n")}\n`;
 }
 
+export function renderInteractiveLoadingScreen(state = {}, dimensions = {}) {
+  const color = colors(Boolean(dimensions.colors));
+  const dots = ".".repeat((state.frame || 0) % 4);
+  const lines = [
+    renderLogo({ color: color.title }),
+    color.dim("interactive cleanup"),
+    "",
+    color.info(`Loading evidence${dots}`),
+    color.dim("Scanning installed skills and local agent history."),
+    color.dim("The review table will appear as soon as candidates are ranked."),
+    "",
+    color.dim("Default run is still preview-only. Cleanup requires selection and confirmation."),
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+export function startInteractiveLoading(options, io = {}) {
+  if (!shouldRunInteractive(options, io)) return null;
+
+  const stdout = io.stdout || process.stdout;
+  let frame = 0;
+
+  function renderLoading() {
+    write(stdout, "\x1b[2J\x1b[H");
+    write(
+      stdout,
+      renderInteractiveLoadingScreen(
+        { frame },
+        {
+          colors: shouldUseColor(stdout),
+        },
+      ),
+    );
+    frame += 1;
+  }
+
+  renderLoading();
+  const timer = setInterval(renderLoading, 160);
+  return {
+    stop() {
+      clearInterval(timer);
+    },
+  };
+}
+
 function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
   const color = colors(Boolean(dimensions.colors));
   const picked = selectedCandidateRows(rows, state);

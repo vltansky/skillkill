@@ -4,7 +4,7 @@ import { shouldUseLinks } from "./format.js";
 import { buildRows, payloadFor } from "./model.js";
 import { collectSkills, scanEvidence } from "./scan.js";
 import { formatCommands, formatTable, writeCsv, writeSnapshot } from "./output.js";
-import { runInteractive, shouldRunInteractive } from "./interactive.js";
+import { runInteractive, shouldRunInteractive, startInteractiveLoading } from "./interactive.js";
 import { runInteractiveUndo } from "./undo-interactive.js";
 import { appendOmitPattern, loadOmitPatterns } from "./omit.js";
 import { quarantineCandidates, restoreCleanupRun } from "./quarantine.js";
@@ -73,8 +73,14 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     return result;
   }
 
+  const loading = startInteractiveLoading(options, io);
   const skills = collectSkills(options.skillsDirs);
-  const scanStats = await scanEvidence(skills, { ...options, now });
+  let scanStats;
+  try {
+    scanStats = await scanEvidence(skills, { ...options, now });
+  } finally {
+    loading?.stop();
+  }
   const omitPatterns = loadOmitPatterns(options);
   const modelOptions = { ...options, now, omitPatterns };
   const rows = buildRows(skills, modelOptions);

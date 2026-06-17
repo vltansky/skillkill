@@ -10,7 +10,11 @@ import { main } from "../src/app.js";
 import { parseArgs } from "../src/args.js";
 import { formatCleanupResult } from "../src/cleanup-result.js";
 import { formatNumber } from "../src/format.js";
-import { renderInteractiveScreen, shouldRunInteractive } from "../src/interactive.js";
+import {
+  renderInteractiveLoadingScreen,
+  renderInteractiveScreen,
+  shouldRunInteractive,
+} from "../src/interactive.js";
 import { buildRows } from "../src/model.js";
 import { loadOmitPatterns } from "../src/omit.js";
 import { collectSkills, scanEvidence } from "../src/scan.js";
@@ -581,7 +585,7 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
     byName.get("braced-home-command-read").last_verified_use,
     "2026-06-07 00:00:00",
   );
-  assert.equal(stats.codex.evidence, 4);
+  assert.equal(stats.codex.evidence, 5);
   assert.equal(stats.claude.evidence, 10);
   assert.equal(stats.opencode.evidence, 3);
   assert.equal(stats.cursor.evidence, 4);
@@ -1280,6 +1284,15 @@ test("renders interactive candidates with selected sort order", () => {
   assertSkillOrder(lastUsedScreen, ["charlie", "alpha", "bravo"]);
 });
 
+test("renders interactive loading screen before evidence is ready", () => {
+  const screen = renderInteractiveLoadingScreen({ frame: 2 }, { colors: false });
+
+  assert.match(screen, /interactive cleanup/);
+  assert.match(screen, /Loading evidence\.\./);
+  assert.match(screen, /Scanning installed skills and local agent history/);
+  assert.match(screen, /preview-only/);
+});
+
 test("interactive mode defaults only for real terminals", () => {
   const defaults = {
     noInteractive: false,
@@ -1343,7 +1356,8 @@ test("interactive e2e selects with enter and quarantines confirmed rows", async 
     { now: NOW, stdin, stdout, stderr: { write: () => {} } },
   );
 
-  await waitForOutput(stdout, /###### ##  ## #### ##     ##/);
+  assert.match(stdout.output, /Loading evidence/);
+  await waitForOutput(stdout, /Keys: \/ search/);
   press(stdin, "space", " ");
   press(stdin, "enter", "\r");
   await waitForOutput(stdout, /skillkill confirm cleanup/);
@@ -1393,7 +1407,7 @@ test("interactive e2e permanently deletes only after typed confirmation", async 
     { now: NOW, stdin, stdout, stderr: { write: () => {} } },
   );
 
-  await waitForOutput(stdout, /###### ##  ## #### ##     ##/);
+  await waitForOutput(stdout, /Keys: \/ search/);
   press(stdin, "space", " ");
   press(stdin, "enter", "\r");
   await waitForOutput(stdout, /skillkill confirm cleanup/);
@@ -1445,7 +1459,7 @@ test("interactive e2e filters with slash search before cleanup", async () => {
     { now: NOW, stdin, stdout, stderr: { write: () => {} } },
   );
 
-  await waitForOutput(stdout, /###### ##  ## #### ##     ##/);
+  await waitForOutput(stdout, /Keys: \/ search/);
   press(stdin, "slash", "/");
   await waitForOutput(stdout, /Search: \/_/);
   press(stdin, "n", "n");
@@ -1495,7 +1509,7 @@ test("interactive e2e applies sort hotkeys", async () => {
     { now: NOW, stdin, stdout, stderr: { write: () => {} } },
   );
 
-  await waitForOutput(stdout, /###### ##  ## #### ##     ##/);
+  await waitForOutput(stdout, /Keys: \/ search/);
   press(stdin, "b", "b");
   await waitForOutput(stdout, /Sort: 30d burn desc/);
   press(stdin, "b", "b");
@@ -1536,7 +1550,7 @@ test("interactive e2e omits current row and persists omit pattern", async () => 
     { now: NOW, stdin, stdout, stderr: { write: () => {} } },
   );
 
-  await waitForOutput(stdout, /###### ##  ## #### ##     ##/);
+  await waitForOutput(stdout, /Keys: \/ search/);
   press(stdin, "o");
   await waitForOutput(stdout, /Omitted stale-skill/);
   press(stdin, "q");
