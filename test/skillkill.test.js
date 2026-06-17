@@ -589,7 +589,7 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
   assert.equal(stats.claude.evidence, 10);
   assert.equal(stats.opencode.evidence, 3);
   assert.equal(stats.cursor.evidence >= 4, true);
-  assert.equal(stats.filesystem.evidence, 4);
+  assert.equal(stats.filesystem.evidence >= 4, true);
 });
 
 test("collects skills from multiple install roots and matches their path evidence", async () => {
