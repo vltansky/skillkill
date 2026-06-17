@@ -137,6 +137,7 @@ artifacts found in the last `--savings-days` window.
 | `space` or `x` | Select or unselect the current skill |
 | `a` | Toggle all cleanup candidates |
 | `o` | Omit the current skill |
+| `t` / `b` / `r` / `i` / `u` | Sort by tokens, burn, risk, installed, or last used |
 | `enter` | Open review, keep search, or confirm cleanup/restore |
 | `d` | Enter permanent-delete mode from cleanup review |
 | `y` | Confirm cleanup or restore shortcut |

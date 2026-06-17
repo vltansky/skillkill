@@ -1200,6 +1200,83 @@ test("renders interactive cleanup candidates", async () => {
   assert.match(deleteScreen, /DELETE confirmation: dele/);
 });
 
+test("renders interactive candidates with selected sort order", () => {
+  const rows = [
+    {
+      id: "alpha",
+      skill: "alpha",
+      path: "/tmp/alpha/SKILL.md",
+      cleanup_candidate: true,
+      cleanup_reason: "old",
+      risk: "medium",
+      description_token_cost: 10,
+      last_verified_use: "2026-06-01T00:00:00.000Z",
+      installed_at: "2026-01-01T00:00:00.000Z",
+    },
+    {
+      id: "bravo",
+      skill: "bravo",
+      path: "/tmp/bravo/SKILL.md",
+      cleanup_candidate: true,
+      cleanup_reason: "older",
+      risk: "low",
+      description_token_cost: 30,
+      last_verified_use: "",
+      installed_at: "2026-05-01T00:00:00.000Z",
+    },
+    {
+      id: "charlie",
+      skill: "charlie",
+      path: "/tmp/charlie/SKILL.md",
+      cleanup_candidate: true,
+      cleanup_reason: "oldest",
+      risk: "protected",
+      description_token_cost: 20,
+      last_verified_use: "2026-06-10T00:00:00.000Z",
+      installed_at: "2026-03-01T00:00:00.000Z",
+    },
+  ];
+
+  function renderSorted(key, direction = "desc") {
+    return renderInteractiveScreen(
+      rows,
+      {
+        cursor: 0,
+        selected: new Set(),
+        recentNewChats: 4,
+        sort: { key, direction },
+      },
+      { columns: 120, rows: 24 },
+    );
+  }
+
+  function assertSkillOrder(screen, skills) {
+    for (let index = 1; index < skills.length; index += 1) {
+      assert.equal(screen.indexOf(skills[index - 1]) < screen.indexOf(skills[index]), true);
+    }
+  }
+
+  const burnScreen = renderSorted("burn");
+  assert.match(burnScreen, /Sort: 30d burn desc/);
+  assertSkillOrder(burnScreen, ["bravo", "charlie", "alpha"]);
+
+  const tokenScreen = renderSorted("tokens");
+  assert.match(tokenScreen, /Sort: tokens desc/);
+  assertSkillOrder(tokenScreen, ["bravo", "charlie", "alpha"]);
+
+  const riskScreen = renderSorted("risk", "asc");
+  assert.match(riskScreen, /Sort: risk asc/);
+  assertSkillOrder(riskScreen, ["bravo", "alpha", "charlie"]);
+
+  const installedScreen = renderSorted("installed");
+  assert.match(installedScreen, /Sort: installed desc/);
+  assertSkillOrder(installedScreen, ["bravo", "charlie", "alpha"]);
+
+  const lastUsedScreen = renderSorted("last-used");
+  assert.match(lastUsedScreen, /Sort: last used desc/);
+  assertSkillOrder(lastUsedScreen, ["charlie", "alpha", "bravo"]);
+});
+
 test("interactive mode defaults only for real terminals", () => {
   const defaults = {
     noInteractive: false,
@@ -1385,6 +1462,45 @@ test("interactive e2e filters with slash search before cleanup", async () => {
   assert.equal(result.cleanup.entries[0].skill, "never-used");
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), false);
+});
+
+test("interactive e2e applies sort hotkeys", async () => {
+  const fixture = makeFixture();
+  const stdin = new FakeStdin();
+  const stdout = new FakeStdout();
+  const run = main(
+    [
+      "--path",
+      fixture.skillsDir,
+      "--codex-dir",
+      fixture.codexDir,
+      "--claude-dir",
+      fixture.claudeDir,
+      "--claude-app-dir",
+      fixture.claudeAppDir,
+      "--opencode-dir",
+      fixture.opencodeDir,
+      "--cursor-dir",
+      fixture.cursorDir,
+      "--unused-installed-days",
+      "0",
+      "--state-dir",
+      fixture.stateDir,
+      "--full-scan",
+      "--no-omit-file",
+    ],
+    { now: NOW, stdin, stdout, stderr: { write: () => {} } },
+  );
+
+  await waitForOutput(stdout, /###### ##  ## #### ##     ##/);
+  press(stdin, "b", "b");
+  await waitForOutput(stdout, /Sort: 30d burn desc/);
+  press(stdin, "b", "b");
+  await waitForOutput(stdout, /Sort: 30d burn asc/);
+  press(stdin, "q");
+
+  const result = await run;
+  assert.equal(result.cancelled, true);
 });
 
 test("interactive e2e omits current row and persists omit pattern", async () => {

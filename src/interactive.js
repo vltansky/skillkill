@@ -59,14 +59,130 @@ function rowSearchText(row) {
     .toLowerCase();
 }
 
+const SORT_DEFAULT_DIRECTION = new Map([
+  ["tokens", "desc"],
+  ["burn", "desc"],
+  ["risk", "asc"],
+  ["installed", "desc"],
+  ["last-used", "desc"],
+]);
+
+const SORT_HOTKEYS = new Map([
+  ["t", "tokens"],
+  ["b", "burn"],
+  ["r", "risk"],
+  ["i", "installed"],
+  ["u", "last-used"],
+]);
+
+const SORT_LABELS = new Map([
+  ["tokens", "tokens"],
+  ["risk", "risk"],
+  ["installed", "installed"],
+  ["last-used", "last used"],
+]);
+
+const RISK_ORDER = new Map([
+  ["low", 0],
+  ["medium", 1],
+  ["protected", 2],
+  ["none", 3],
+]);
+
+function sortLabel(sort, windowDays) {
+  if (!sort) return "";
+  const label = sort.key === "burn" ? `${windowDays}d burn` : SORT_LABELS.get(sort.key);
+  return `${label || sort.key} ${sort.direction}`;
+}
+
+function normalizeSort(sort) {
+  if (!sort || !SORT_DEFAULT_DIRECTION.has(sort.key)) return null;
+  const direction = sort.direction === "asc" || sort.direction === "desc"
+    ? sort.direction
+    : SORT_DEFAULT_DIRECTION.get(sort.key);
+  return { key: sort.key, direction };
+}
+
+function compareText(left, right) {
+  return String(left || "").localeCompare(String(right || ""));
+}
+
+function compareNumber(left, right) {
+  return (left || 0) - (right || 0);
+}
+
+function compareRank(left, right, ranks) {
+  return (
+    (ranks.get(left) ?? Number.MAX_SAFE_INTEGER) -
+    (ranks.get(right) ?? Number.MAX_SAFE_INTEGER)
+  );
+}
+
+function compareDateDirection(left, right, direction) {
+  const hasLeft = Boolean(left);
+  const hasRight = Boolean(right);
+  if (!hasLeft && !hasRight) return 0;
+  if (!hasLeft) return 1;
+  if (!hasRight) return -1;
+  return withDirection(String(left).localeCompare(String(right)), direction);
+}
+
+function withDirection(value, direction) {
+  return direction === "desc" ? -value : value;
+}
+
+function sortCandidateRows(rows, state = {}) {
+  const sort = normalizeSort(state.sort);
+  if (!sort) return rows;
+
+  const recentNewChats = state.recentNewChats ?? 0;
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((left, right) => {
+      let comparison = 0;
+      if (sort.key === "tokens") {
+        comparison = withDirection(
+          compareNumber(left.row.description_token_cost, right.row.description_token_cost),
+          sort.direction,
+        );
+      } else if (sort.key === "burn") {
+        comparison = withDirection(
+          compareNumber(
+            left.row.description_token_cost * recentNewChats,
+            right.row.description_token_cost * recentNewChats,
+          ),
+          sort.direction,
+        );
+      } else if (sort.key === "risk") {
+        comparison = withDirection(compareRank(left.row.risk, right.row.risk, RISK_ORDER), sort.direction);
+      } else if (sort.key === "installed") {
+        comparison = compareDateDirection(left.row.installed_at, right.row.installed_at, sort.direction);
+      } else if (sort.key === "last-used") {
+        comparison = compareDateDirection(
+          left.row.last_verified_use,
+          right.row.last_verified_use,
+          sort.direction,
+        );
+      }
+      if (comparison !== 0) return comparison;
+      const skillComparison = compareText(left.row.skill, right.row.skill);
+      if (skillComparison !== 0) return skillComparison;
+      return left.index - right.index;
+    })
+    .map(({ row }) => row);
+}
+
 function candidateRows(rows, state = {}) {
   const omitted = state.omitted || new Set();
   const search = String(state.search || "").trim().toLowerCase();
-  return rows.filter(
-    (row) =>
-      row.cleanup_candidate &&
-      !omitted.has(row.skill) &&
-      (!search || rowSearchText(row).includes(search)),
+  return sortCandidateRows(
+    rows.filter(
+      (row) =>
+        row.cleanup_candidate &&
+        !omitted.has(row.skill) &&
+        (!search || rowSearchText(row).includes(search)),
+    ),
+    state,
   );
 }
 
@@ -167,6 +283,8 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   );
   const search = String(state.search || "");
   const links = Boolean(dimensions.links);
+  const sort = normalizeSort(state.sort);
+  const sortText = sortLabel(sort, windowDays);
 
   const lines = [
     renderLogo({ color: color.title }),
@@ -185,6 +303,9 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
 
   if (state.searching || search) {
     lines.push(color.info(`Search: /${search}${state.searching ? "_" : ""}`));
+  }
+  if (sortText) {
+    lines.push(color.info(`Sort: ${sortText}`));
   }
 
   if (candidates.length === 0) {
@@ -216,7 +337,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
       ? color.warn("Confirm: enter quarantine, esc review")
       : state.searching
         ? color.info("Search: type to filter, enter keep, esc clear, backspace delete")
-        : color.dim("Keys: / search, up/down or j/k move, space/x select, a all, o omit, enter review, q quit"),
+        : color.dim("Keys: / search, up/down or j/k move, space/x select, a all, o omit, t/b/r/i/u sort, enter review, q quit"),
   );
   lines.push(color.dim("Use --no-interactive for the static table. Cleanup is quarantine-only and undoable."));
   lines.push(color.dim("Use means verified skill action; cleanup reason explains why removal is proposed."));
@@ -332,6 +453,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
     search: "",
     deleteMode: false,
     deleteConfirm: "",
+    sort: null,
     recentNewChats: payload.summary.recentNewChats ?? options.recentNewChats ?? 0,
     savingsDays: options.savingsDays ?? 30,
     message: "",
@@ -417,6 +539,17 @@ export async function runInteractive(rows, payload, options, io = {}) {
       state.message = saved.saved
         ? `Omitted ${row.skill} and saved to ${options.omitFile}.`
         : `Omitted ${row.skill} for this run.`;
+    }
+
+    function toggleSort(key) {
+      const current = normalizeSort(state.sort);
+      const defaultDirection = SORT_DEFAULT_DIRECTION.get(key);
+      const direction = current?.key === key && current.direction === defaultDirection
+        ? defaultDirection === "desc" ? "asc" : "desc"
+        : defaultDirection;
+      state.sort = { key, direction };
+      state.cursor = 0;
+      state.message = "";
     }
 
     function quarantineSelected() {
@@ -546,6 +679,7 @@ export async function runInteractive(rows, payload, options, io = {}) {
         else if (key.name === "space" || key.name === "x") toggleCurrent();
         else if (key.name === "a") toggleAll();
         else if (key.name === "o") omitCurrent();
+        else if (SORT_HOTKEYS.has(_str || key.name)) toggleSort(SORT_HOTKEYS.get(_str || key.name));
         else if (key.name === "return" || key.name === "enter") {
           if (selectedRows().length === 0) {
             state.message = "Select at least one skill first.";
