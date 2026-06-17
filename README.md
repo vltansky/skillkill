@@ -120,8 +120,9 @@ cost is a rough estimate from the skill `description` frontmatter field.
 `used_window_tokens` is observed cost from usage events in the current
 `--savings-days` window. Human tables show `30d burn` by default: each skill's
 description tokens multiplied by distinct new local chat/session artifacts found
-in the last `--savings-days` window. They also show installed date and a
-terminal hyperlink on the last used chat label when the terminal supports it.
+in the last `--savings-days` window. The interactive table keeps full install
+paths out of the list view; it shows compact install-source labels there and
+prints the full paths in the confirmation review before cleanup.
 
 The interactive confirmation screen shows the selected skills, description
 tokens removed per future skill-catalog load, and observed token cost from

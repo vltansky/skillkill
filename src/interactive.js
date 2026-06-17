@@ -26,19 +26,48 @@ function clip(value, width) {
   return text.length > width ? `${text.slice(0, width - 1)}.` : text.padEnd(width);
 }
 
-function usageCell(row, width, links) {
+function compactLastUseCell(row, width, links) {
   const date = formatDateMinute(row.last_used || row.last_verified_use);
+  if (date === "-") return clip(row.cleanup_reason, width);
+
+  const prefix = row.cleanup_reason.startsWith("last verified use ")
+    ? row.cleanup_reason.replace("last verified use ", "used ")
+    : row.cleanup_reason;
   const title =
     (row.usage_scope || row.last_verified_scope) === "same-name"
       ? "same-name"
       : row.last_usage_chat_title || row.last_verified_chat_title || "";
-  if (!title || date === "-") return clip(date, width);
+  if (!title) return clip(prefix, width);
 
-  const titleWidth = Math.max(0, width - date.length - 1);
+  const titleWidth = Math.max(0, width - prefix.length - 1);
   const label = clip(title, titleWidth).trimEnd();
-  const visibleLength = date.length + 1 + label.length;
-  const text = `${date} ${hyperlink(label, row.last_usage_href || row.last_verified_href, links)}`;
+  const visibleLength = prefix.length + 1 + label.length;
+  const text = `${prefix} ${hyperlink(label, row.last_usage_href || row.last_verified_href, links)}`;
   return `${text}${" ".repeat(Math.max(0, width - visibleLength))}`;
+}
+
+function installSourceLabel(value) {
+  const text = String(value || "");
+  if (text.includes("/.claude/")) return "claude";
+  if (text.includes("/.cursor/")) return "cursor";
+  if (text.includes("/.codex/")) return "codex";
+  if (text.includes("/.agents/")) return "agents";
+  return text.split("/").filter(Boolean).at(-1) || "custom";
+}
+
+function installSourcesCell(row, width) {
+  const installs = row.installs?.length ? row.installs : [{ installRoot: row.install_root, path: row.path }];
+  const labels = [
+    ...new Set(installs.map((item) => installSourceLabel(item.installRoot || item.path))),
+  ];
+  const installCount = row.install_count || installs.length;
+  const suffix = installCount > 1 ? ` +${formatNumber(installCount)} installs` : "";
+  return clip(`${labels.join(",")}${suffix}`, width);
+}
+
+function installPathsCell(row, width) {
+  const paths = row.paths?.length ? row.paths : [row.path];
+  return clip(paths.join(", "), width);
 }
 
 function rowSearchText(row) {
@@ -159,8 +188,8 @@ function sortCandidateRows(rows, state = {}) {
         comparison = compareDateDirection(left.row.installed_at, right.row.installed_at, sort.direction);
       } else if (sort.key === "last-used") {
         comparison = compareDateDirection(
-          left.row.last_verified_use,
-          right.row.last_verified_use,
+          left.row.last_used || left.row.last_verified_use,
+          right.row.last_used || right.row.last_verified_use,
           sort.direction,
         );
       }
@@ -266,15 +295,13 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
   const tokenWidth = 10;
   const burnWidth = 12;
   const nameWidth = Math.min(30, Math.max(18, Math.floor(width * 0.24)));
-  const reasonWidth = Math.min(38, Math.max(20, Math.floor(width * 0.32)));
-  const verifiedWidth = 34;
+  const lastUseWidth = Math.min(46, Math.max(24, Math.floor(width * 0.34)));
   const installedWidth = 12;
-  const pathWidth = Math.max(
+  const sourcesWidth = Math.max(
     14,
     width -
       nameWidth -
-      reasonWidth -
-      verifiedWidth -
+      lastUseWidth -
       installedWidth -
       riskWidth -
       tokenWidth -
@@ -294,10 +321,10 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     ),
     "",
     color.header(
-      `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip(`${windowDays}d burn`, burnWidth)} ${clip("skill", nameWidth)} ${clip("cleanup reason", reasonWidth)} ${clip("last used", verifiedWidth)} ${clip("installed", installedWidth)} ${clip("path", pathWidth)}`,
+      `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip(`${windowDays}d burn`, burnWidth)} ${clip("skill", nameWidth)} ${clip("last use", lastUseWidth)} ${clip("installed", installedWidth)} ${clip("sources", sourcesWidth)}`,
     ),
     color.dim(
-      `   --- ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(burnWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(verifiedWidth)} ${"-".repeat(installedWidth)} ${"-".repeat(pathWidth)}`,
+      `   --- ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(burnWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(lastUseWidth)} ${"-".repeat(installedWidth)} ${"-".repeat(sourcesWidth)}`,
     ),
   ];
 
@@ -321,7 +348,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
         : clip(row.skill, nameWidth);
       const burnTokens = row.description_token_cost * recentNewChats;
       lines.push(
-        `${active} ${mark} ${color.risk(clip(row.risk, riskWidth), row.risk)} ${color.token(clip(formatNumber(row.description_token_cost), tokenWidth))} ${color.usage(clip(formatNumber(burnTokens), burnWidth), burnTokens)} ${skill} ${clip(row.cleanup_reason, reasonWidth)} ${usageCell(row, verifiedWidth, links)} ${clip(formatDateOnly(row.installed_at), installedWidth)} ${color.dim(clip(row.path, pathWidth))}`,
+        `${active} ${mark} ${color.risk(clip(row.risk, riskWidth), row.risk)} ${color.token(clip(formatNumber(row.description_token_cost), tokenWidth))} ${color.usage(clip(formatNumber(burnTokens), burnWidth), burnTokens)} ${skill} ${compactLastUseCell(row, lastUseWidth, links)} ${clip(formatDateOnly(row.installed_at), installedWidth)} ${color.dim(installSourcesCell(row, sourcesWidth))}`,
       );
     }
   }
@@ -340,7 +367,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
         : color.dim("Keys: / search, up/down or j/k move, space/x select, a all, o omit, t/b/r/i/u sort, enter review, q quit"),
   );
   lines.push(color.dim("Use --no-interactive for the static table. Cleanup is quarantine-only and undoable."));
-  lines.push(color.dim("Use means verified skill action; cleanup reason explains why removal is proposed."));
+  lines.push(color.dim("Last use is based on usage events; paths are shown in review before cleanup."));
   lines.push(color.dim(`${windowDays}d burn is description tokens multiplied by ${formatNumber(recentNewChats)} new chats found in the last ${formatNumber(windowDays)} days.`));
   return `${lines.join("\n")}\n`;
 }
@@ -351,12 +378,13 @@ function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
   const deleteMode = Boolean(state.deleteMode);
   const height = Math.max(10, dimensions.rows || 24);
   const width = Math.max(72, dimensions.columns || 100);
-  const visibleSkills = Math.max(1, height - 13);
+  const visibleSkills = Math.max(1, Math.floor((height - 13) / 2));
   const shown = picked.slice(0, visibleSkills);
   const hidden = Math.max(0, picked.length - shown.length);
   const impact = tokenImpact(picked, state);
   const skillWidth = Math.max(24, Math.min(48, Math.floor(width * 0.4)));
   const reasonWidth = Math.max(20, width - skillWidth - 28);
+  const pathWidth = Math.max(24, width - 10);
 
   const lines = [
     color.warn(deleteMode ? "skillkill confirm permanent delete" : "skillkill confirm cleanup"),
@@ -379,6 +407,7 @@ function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
       lines.push(
         `  - ${color.good(clip(row.skill, skillWidth))} ${color.token(clip(`${formatNumber(row.description_token_cost)} tokens${installs}`, 28))} ${clip(row.cleanup_reason, reasonWidth)}`,
       );
+      lines.push(`    paths: ${color.dim(installPathsCell(row, pathWidth))}`);
     }
     if (hidden) lines.push(color.dim(`  ... and ${formatNumber(hidden)} more`));
   }

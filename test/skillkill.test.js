@@ -1108,13 +1108,15 @@ test("renders interactive cleanup candidates", async () => {
   assert.doesNotMatch(screen, /stale skill cleanup, with receipts/);
   assert.match(screen, /interactive cleanup/);
   assert.match(screen, /2 cleanup candidates/);
-  assert.match(screen, /risk\s+tokens\s+30d burn\s+skill\s+cleanup reason\s+last used\s+installed/);
+  assert.match(screen, /risk\s+tokens\s+30d burn\s+skill\s+last use\s+installed\s+sources/);
   assert.doesNotMatch(screen, /\x1b\[/);
   assert.doesNotMatch(screen, /status/);
   assert.doesNotMatch(screen, /last strong use/);
+  assert.doesNotMatch(screen, /cleanup reason/);
   assert.match(screen, /\[x\] low\s+\d+\s+22\s+stale-skill/);
   assert.doesNotMatch(screen, /2026-04-01 00:00:00/);
-  assert.match(screen, /2026-04-01 00:00/);
+  assert.match(screen, /used \d+ days ago/);
+  assert.match(screen, /skills\s*$/m);
   assert.match(screen, /o omit/);
   assert.doesNotMatch(screen, /recent-skill/);
 
@@ -1172,6 +1174,7 @@ test("renders interactive cleanup candidates", async () => {
   assert.match(confirmScreen, /skillkill confirm cleanup/);
   assert.match(confirmScreen, /You are going to remove 1 skill from active use/);
   assert.match(confirmScreen, /stale-skill/);
+  assert.match(confirmScreen, /paths: .*stale-skill\/SKILL\.md/);
   assert.match(confirmScreen, /Removed description tokens: \d+ per future skill-catalog load/);
   assert.match(confirmScreen, /Potential new-chat savings: 11 x 2 new chats in last 30 days = 22 tokens/);
   assert.match(confirmScreen, /Selected uses in last 30 days: 0/);
