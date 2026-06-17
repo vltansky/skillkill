@@ -26,15 +26,18 @@ function clip(value, width) {
   return text.length > width ? `${text.slice(0, width - 1)}.` : text.padEnd(width);
 }
 
-function verifiedUseCell(row, width, links) {
-  const date = formatDateMinute(row.last_verified_use);
-  const title = row.last_verified_chat_title || "";
+function usageCell(row, width, links) {
+  const date = formatDateMinute(row.last_used || row.last_verified_use);
+  const title =
+    (row.usage_scope || row.last_verified_scope) === "same-name"
+      ? "same-name"
+      : row.last_usage_chat_title || row.last_verified_chat_title || "";
   if (!title || date === "-") return clip(date, width);
 
   const titleWidth = Math.max(0, width - date.length - 1);
   const label = clip(title, titleWidth).trimEnd();
   const visibleLength = date.length + 1 + label.length;
-  const text = `${date} ${hyperlink(label, row.last_verified_href, links)}`;
+  const text = `${date} ${hyperlink(label, row.last_usage_href || row.last_verified_href, links)}`;
   return `${text}${" ".repeat(Math.max(0, width - visibleLength))}`;
 }
 
@@ -83,18 +86,18 @@ function selectedCandidateRows(rows, state = {}) {
 
 function tokenImpact(picked, state = {}) {
   const removedTokens = picked.reduce((sum, row) => sum + row.description_token_cost, 0);
-  const selectedRecentVerifiedUses = picked.reduce((sum, row) => sum + row.recent_strong_count, 0);
-  const selectedRecentPathMentions = picked.reduce((sum, row) => sum + row.recent_weak_count, 0);
+  const selectedRecentUsage = picked.reduce((sum, row) => sum + row.recent_usage_count, 0);
+  const selectedRecentMentions = picked.reduce((sum, row) => sum + row.recent_mention_count, 0);
   const recentNewChats = state.recentNewChats ?? 0;
   return {
     removedTokens,
     recentNewChats,
-    selectedRecentVerifiedUses,
-    selectedRecentPathMentions,
+    selectedRecentUsage,
+    selectedRecentMentions,
     savingsDays: state.savingsDays ?? 30,
     potentialNewChatSavings: removedTokens * recentNewChats,
     observedSelectedUseTokens: picked.reduce(
-      (sum, row) => sum + row.description_token_cost * row.recent_strong_count,
+      (sum, row) => sum + row.description_token_cost * row.recent_usage_count,
       0,
     ),
   };
@@ -173,7 +176,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
     ),
     "",
     color.header(
-      `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip(`${windowDays}d burn`, burnWidth)} ${clip("skill", nameWidth)} ${clip("cleanup reason", reasonWidth)} ${clip("last verified use", verifiedWidth)} ${clip("installed", installedWidth)} ${clip("path", pathWidth)}`,
+      `   sel ${clip("risk", riskWidth)} ${clip("tokens", tokenWidth)} ${clip(`${windowDays}d burn`, burnWidth)} ${clip("skill", nameWidth)} ${clip("cleanup reason", reasonWidth)} ${clip("last used", verifiedWidth)} ${clip("installed", installedWidth)} ${clip("path", pathWidth)}`,
     ),
     color.dim(
       `   --- ${"-".repeat(riskWidth)} ${"-".repeat(tokenWidth)} ${"-".repeat(burnWidth)} ${"-".repeat(nameWidth)} ${"-".repeat(reasonWidth)} ${"-".repeat(verifiedWidth)} ${"-".repeat(installedWidth)} ${"-".repeat(pathWidth)}`,
@@ -197,7 +200,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
         : clip(row.skill, nameWidth);
       const burnTokens = row.description_token_cost * recentNewChats;
       lines.push(
-        `${active} ${mark} ${color.risk(clip(row.risk, riskWidth), row.risk)} ${color.token(clip(formatNumber(row.description_token_cost), tokenWidth))} ${color.usage(clip(formatNumber(burnTokens), burnWidth), burnTokens)} ${skill} ${clip(row.cleanup_reason, reasonWidth)} ${verifiedUseCell(row, verifiedWidth, links)} ${clip(formatDateOnly(row.installed_at), installedWidth)} ${color.dim(clip(row.path, pathWidth))}`,
+        `${active} ${mark} ${color.risk(clip(row.risk, riskWidth), row.risk)} ${color.token(clip(formatNumber(row.description_token_cost), tokenWidth))} ${color.usage(clip(formatNumber(burnTokens), burnWidth), burnTokens)} ${skill} ${clip(row.cleanup_reason, reasonWidth)} ${usageCell(row, verifiedWidth, links)} ${clip(formatDateOnly(row.installed_at), installedWidth)} ${color.dim(clip(row.path, pathWidth))}`,
       );
     }
   }
@@ -216,7 +219,7 @@ export function renderInteractiveScreen(rows, state = {}, dimensions = {}) {
         : color.dim("Keys: / search, up/down or j/k move, space/x select, a all, o omit, enter review, q quit"),
   );
   lines.push(color.dim("Use --no-interactive for the static table. Cleanup is quarantine-only and undoable."));
-  lines.push(color.dim("Verified use means native skill invocation; cleanup reason explains why removal is proposed."));
+  lines.push(color.dim("Use means verified skill action; cleanup reason explains why removal is proposed."));
   lines.push(color.dim(`${windowDays}d burn is description tokens multiplied by ${formatNumber(recentNewChats)} new chats found in the last ${formatNumber(windowDays)} days.`));
   return `${lines.join("\n")}\n`;
 }
@@ -264,9 +267,9 @@ function renderConfirmationScreen(rows, state = {}, dimensions = {}) {
     color.header("Token effect:"),
     `  Removed description tokens: ${color.token(formatNumber(impact.removedTokens))} per future skill-catalog load`,
     `  Potential new-chat savings: ${color.token(formatNumber(impact.removedTokens))} x ${color.info(formatNumber(impact.recentNewChats))} new ${plural(impact.recentNewChats, "chat")} in last ${formatNumber(impact.savingsDays)} days = ${color.good(formatNumber(impact.potentialNewChatSavings))} tokens`,
-    `  Selected verified uses in last ${formatNumber(impact.savingsDays)} days: ${color.info(formatNumber(impact.selectedRecentVerifiedUses))}`,
+    `  Selected uses in last ${formatNumber(impact.savingsDays)} days: ${color.info(formatNumber(impact.selectedRecentUsage))}`,
     `  Observed selected-use prompt cost: ${color.token(formatNumber(impact.observedSelectedUseTokens))} tokens`,
-    `  Selected path mentions in window: ${color.dim(formatNumber(impact.selectedRecentPathMentions))} (not counted as verified use)`,
+    `  Selected mentions in window: ${color.dim(formatNumber(impact.selectedRecentMentions))} (not counted as use)`,
     "",
     deleteMode
       ? `${color.danger("Type DELETE then press Enter to permanently delete.")} ${color.dim("Press Esc to return to review.")}`

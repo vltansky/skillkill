@@ -13,14 +13,17 @@ function cell(text, visibleLength = String(text || "").length) {
   return { text: String(text || ""), visibleLength };
 }
 
-function verifiedUseCell(row, width, links) {
-  const date = formatDateMinute(row.last_verified_use);
-  const title = row.last_verified_chat_title || "";
+function usageCell(row, width, links) {
+  const date = formatDateMinute(row.last_used || row.last_verified_use);
+  const title =
+    (row.usage_scope || row.last_verified_scope) === "same-name"
+      ? "same-name"
+      : row.last_usage_chat_title || row.last_verified_chat_title || "";
   if (!title || date === "-") return cell(date, date.length);
 
   const titleWidth = Math.max(0, width - date.length - 1);
   const label = clipped(title, titleWidth);
-  return cell(`${date} ${hyperlink(label, row.last_verified_href, links)}`, date.length + 1 + label.length);
+  return cell(`${date} ${hyperlink(label, row.last_usage_href || row.last_verified_href, links)}`, date.length + 1 + label.length);
 }
 
 function pathCell(row) {
@@ -45,10 +48,10 @@ export function formatTable(rows, limit, options = {}) {
     ["risk", 9],
     ["tokens", 10],
     [`${windowDays}d burn`, 12],
-    ["last_verified_use", 36],
+    ["last_used", 36],
     ["installed date", 14],
-    ["last_any_signal", 19],
-    ["verified", 8],
+    ["last_seen", 19],
+    ["use", 8],
     ["mentions", 8],
     ["cleanup?", 8],
     ["cleanup_reason", 34],
@@ -67,11 +70,11 @@ export function formatTable(rows, limit, options = {}) {
       row.risk,
       formatNumber(row.description_token_cost),
       formatNumber(row.description_token_cost * recentNewChats),
-      verifiedUseCell(row, 36, options.links),
+      usageCell(row, 36, options.links),
       formatDateOnly(row.installed_at),
-      formatDateMinute(row.last_any_signal),
-      formatNumber(row.verified_use_count),
-      formatNumber(row.path_mention_count),
+      formatDateMinute(row.last_seen || row.last_any_signal),
+      formatNumber(row.usage_count ?? row.verified_use_count),
+      formatNumber(row.mention_count ?? row.path_mention_count),
       row.cleanup_candidate ? "yes" : "no",
       row.cleanup_reason || "-",
       pathCell(row),
@@ -85,7 +88,7 @@ export function formatTable(rows, limit, options = {}) {
 
   lines.push(
     "",
-    "verified use = native skill invocation; path mention = raw SKILL.md path found in local history.",
+    "use = verified skill action; mention = raw SKILL.md path/name found in local history.",
     "cleanup reason = why the row is selected for cleanup or protected from cleanup.",
     `${windowDays}d burn = description tokens multiplied by ${formatNumber(recentNewChats)} new chats found in the last ${formatNumber(windowDays)} days.`,
   );

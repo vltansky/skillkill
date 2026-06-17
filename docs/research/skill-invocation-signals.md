@@ -4,12 +4,15 @@
 
 Agent tools expose different confidence levels for skill usage:
 
-- Native invocation metadata is strongest.
-- Structured tool calls that read an installed `SKILL.md` are also strong.
-- Raw path mentions in chat/session stores are weak, but useful for avoiding
+- Native invocation metadata is usage evidence.
+- Structured tool calls that read an installed `SKILL.md` are also usage
+  evidence.
+- Shell commands that read an installed `SKILL.md` are usage evidence when the command
+  is captured in a trusted transcript or explicit evidence file.
+- Raw path mentions in chat/session stores are mentions, useful for avoiding
   risky cleanup.
-- Closed or undocumented stores should stay weak unless parsed with a stable
-  schema.
+- Closed or undocumented stores should stay mention-only unless parsed with a
+  stable schema.
 
 ## Evidence
 
@@ -33,15 +36,17 @@ Agent tools expose different confidence levels for skill usage:
 - Cline conversation history includes explicit `tool_use` blocks with the tool
   name and JSON input:
   https://github.com/cline/cline/blob/main/apps/vscode/src/core/storage/disk.ts#L757-L807
-- Cursor `store.db` is undocumented, but independent parsers recover structured
-  `tool-call` records from JSON blobs; byte-grep should remain weak until
-  `skillkill` has a real DB/blob parser:
+- Cursor `store.db` is undocumented, but local `agent-transcripts/*.jsonl`
+  files expose structured `tool_use` blocks; keep DB blob matches mention-only
+  while treating transcript read tool calls as usage. Independent parsers also
+  recover structured `tool-call` records from JSON blobs, which is future work:
   https://github.com/redaphid/mind-meld/blob/main/src/parsers/cursor-blobs.ts#L73-L150
 
 ## Implications
 
-- Keep Codex skill blocks and Claude `attributionSkill` as strong.
-- Treat OpenCode `read` tool parts for `SKILL.md` as strong.
-- Keep OpenCode/Cursor raw path matches as weak.
-- Add future structured parsers for Continue, Cline/Roo, and Cursor before
-  promoting their evidence.
+- Keep Codex skill blocks and Claude `attributionSkill` as usage.
+- Treat structured `read` tool calls and captured shell read commands for
+  `SKILL.md` as usage.
+- Keep OpenCode/Cursor raw path matches as mentions.
+- Add future structured parsers for Continue, Cline/Roo, and Cursor DB blobs
+  before promoting their evidence.

@@ -49,13 +49,15 @@ Behavior:
 - Interactive terminal review by default when stdin/stdout are terminals.
 - Static dry-run table when output is piped or `--no-interactive` is passed.
 - Candidates first in both interactive and static views.
-- Verified use from Codex injected skill blocks and Claude
+- Usage from Codex injected skill blocks and Claude
   `attributionSkill`.
-- Verified use from OpenCode structured `read` tool parts that target an
+- Usage from OpenCode structured `read` tool parts that target an
   installed `SKILL.md`.
-- Lower-confidence path mentions from OpenCode records, Cursor chat stores, and
+- Usage from Cursor project agent transcript read tool calls that target
+  an installed `SKILL.md`.
+- Lower-confidence mentions from OpenCode records, Cursor chat stores, and
   user-provided local evidence directories.
-- Recent path mentions defer cleanup by default because they may indicate use in
+- Recent mentions defer cleanup by default because they may indicate use in
   tools without native skill attribution, but they stay labeled as lower
   confidence.
 - `--apply` moves candidates into a local quarantine run and prints every moved
@@ -85,7 +87,7 @@ Outputs:
 2. Add fixture-based tests.
    - Codex transcript with injected skill block.
    - Claude transcript with `attributionSkill`.
-   - Path mentions that remain lower-confidence evidence.
+   - Mentions that remain lower-confidence evidence.
    - Never-used skill older than threshold.
    - Dot-prefixed protected skill.
 

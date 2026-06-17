@@ -9,10 +9,19 @@ function cleanupSummary(entries, savingsDays) {
   const removedTokens = entries.reduce((sum, entry) => sum + (entry.descriptionTokenCost || 0), 0);
   return {
     removedTokens,
-    recentVerifiedUses: entries.reduce((sum, entry) => sum + (entry.recentStrongCount || 0), 0),
-    recentPathMentions: entries.reduce((sum, entry) => sum + (entry.recentWeakCount || 0), 0),
+    recentUsageEvents: entries.reduce(
+      (sum, entry) => sum + (entry.recentUsageCount ?? entry.recentStrongCount ?? 0),
+      0,
+    ),
+    recentMentions: entries.reduce(
+      (sum, entry) => sum + (entry.recentMentionCount ?? entry.recentWeakCount ?? 0),
+      0,
+    ),
     observedUseTokens: entries.reduce(
-      (sum, entry) => sum + (entry.descriptionTokenCost || 0) * (entry.recentStrongCount || 0),
+      (sum, entry) =>
+        sum +
+        (entry.descriptionTokenCost || 0) *
+          (entry.recentUsageCount ?? entry.recentStrongCount ?? 0),
       0,
     ),
     savingsDays,
@@ -40,12 +49,12 @@ export function formatCleanupResult(result, options = {}) {
     color.header("Token savings"),
     `  Saved per skill-catalog load: ${color.token(formatNumber(summary.removedTokens))} description tokens`,
     `  Potential new-chat savings: ${color.token(formatNumber(summary.removedTokens))} x ${color.info(formatNumber(recentNewChats))} new ${plural(recentNewChats, "chat")} in last ${formatNumber(summary.savingsDays)} days = ${color.good(formatNumber(potentialNewChatSavings))} tokens`,
-    `  Selected verified uses in last ${formatNumber(summary.savingsDays)} days: ${color.info(formatNumber(summary.recentVerifiedUses))}`,
+    `  Selected uses in last ${formatNumber(summary.savingsDays)} days: ${color.info(formatNumber(summary.recentUsageEvents))}`,
     `  Observed selected-use prompt cost removed: ${color.token(formatNumber(summary.observedUseTokens))} tokens`,
   ];
 
-  if (summary.recentPathMentions > 0) {
-    lines.push(`  Path mentions in window: ${color.dim(formatNumber(summary.recentPathMentions))} (not counted as verified use)`);
+  if (summary.recentMentions > 0) {
+    lines.push(`  Mentions in window: ${color.dim(formatNumber(summary.recentMentions))} (not counted as use)`);
   }
 
   lines.push("", color.header(permanent ? "Deleted paths" : "Moved paths"));

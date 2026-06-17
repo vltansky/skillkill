@@ -125,6 +125,7 @@ function groupUsages(usages) {
       isSymlink: Boolean(usage.isSymlink),
       linkTarget: usage.linkTarget || "",
       fingerprint: usage.fingerprint || "",
+      managedByPluginCache: Boolean(usage.managedByPluginCache),
       atime: usage.atime,
       birthtime: usage.birthtime,
       mtime: usage.mtime,
@@ -138,16 +139,19 @@ function groupUsages(usages) {
         isSymlink: install.isSymlink,
         linkTarget: install.linkTarget,
         fingerprint: install.fingerprint,
+        managedByPluginCache: install.managedByPluginCache,
         installs: [install],
-        strong: uniqueEvidence(usage.strong),
-        weak: uniqueEvidence(usage.weak),
+        usageEvents: uniqueEvidence(usage.usageEvents),
+        mentions: uniqueEvidence(usage.mentions),
       });
       continue;
     }
 
     existing.installs.push(install);
-    existing.strong = uniqueEvidence([...existing.strong, ...usage.strong]);
-    existing.weak = uniqueEvidence([...existing.weak, ...usage.weak]);
+    existing.usageEvents = uniqueEvidence([...existing.usageEvents, ...usage.usageEvents]);
+    existing.mentions = uniqueEvidence([...existing.mentions, ...usage.mentions]);
+    existing.managedByPluginCache =
+      Boolean(existing.managedByPluginCache) || Boolean(usage.managedByPluginCache);
     if (!existing.description && usage.description) existing.description = usage.description;
     existing.birthtime = newestDate(existing.installs.map((item) => item.birthtime));
     existing.mtime = newestDate(existing.installs.map((item) => item.mtime));
@@ -156,10 +160,10 @@ function groupUsages(usages) {
   return [...groups.values()];
 }
 
-function riskFor({ cleanupCandidate, cleanupReason, dotPrefixed, recentWeak }) {
-  if (dotPrefixed || recentWeak) return "protected";
+function riskFor({ cleanupCandidate, cleanupReason, dotPrefixed, pluginManaged, recentMention }) {
+  if (dotPrefixed || pluginManaged || recentMention) return "protected";
   if (!cleanupCandidate) return "none";
-  if (cleanupReason.startsWith("no verified use")) return "medium";
+  if (cleanupReason.startsWith("no usage evidence")) return "medium";
   return "low";
 }
 
@@ -175,75 +179,99 @@ export function ageDays(value, now = new Date()) {
 
 export function buildRows(skills, options) {
   const now = options.now || new Date();
-  const protectWeakDays = options.protectWeakDays ?? options.unusedDays;
+  const protectMentionDays = options.protectMentionDays ?? options.protectWeakDays ?? options.unusedDays;
   const savingsDays = options.savingsDays ?? 30;
   const usageTokenWindowDays = 14;
-  return groupUsages([...skills.values()])
+  const usages = groupUsages([...skills.values()]);
+  const latestUsageEventBySkill = new Map();
+  const usageEventCountBySkill = new Map();
+  for (const usage of usages) {
+    usageEventCountBySkill.set(
+      usage.skill,
+      (usageEventCountBySkill.get(usage.skill) || 0) + usage.usageEvents.length,
+    );
+    const item = latestItem(usage.usageEvents);
+    if (!item) continue;
+    const current = latestUsageEventBySkill.get(usage.skill);
+    if (!current || item.ts.getTime() > current.ts.getTime()) {
+      latestUsageEventBySkill.set(usage.skill, item);
+    }
+  }
+
+  return usages
     .map((usage) => {
-      const lastStrongEvidence = latestItem(usage.strong);
-      const lastStrong = lastStrongEvidence?.ts || null;
-      const lastWeak = latest(usage.weak);
-      const lastSignal = latest([...usage.strong, ...usage.weak]);
-      const recentStrongSignals = recent(usage.strong, now, savingsDays);
-      const recentWeakSignals = recent(usage.weak, now, savingsDays);
-      const verifiedUses14d = recent(usage.strong, now, usageTokenWindowDays);
+      const directLastUsageEvidence = latestItem(usage.usageEvents);
+      const relatedLastUsageEvidence = latestUsageEventBySkill.get(usage.skill);
+      const lastUsageEvidence = directLastUsageEvidence || relatedLastUsageEvidence;
+      const lastUsed = lastUsageEvidence?.ts || null;
+      const lastDirectUse = directLastUsageEvidence?.ts || null;
+      const lastMention = latest(usage.mentions);
+      const lastSignal = latest([...usage.usageEvents, ...usage.mentions]);
+      const recentUsageEvents = recent(usage.usageEvents, now, savingsDays);
+      const recentMentions = recent(usage.mentions, now, savingsDays);
+      const usageEvents14d = recent(usage.usageEvents, now, usageTokenWindowDays);
       const descriptionTokenCost = estimateDescriptionTokens(usage.description);
-      const codexStrongCount = usage.strong.filter((item) =>
+      const codexUsageCount = usage.usageEvents.filter((item) =>
         item.kind.startsWith("codex_"),
       ).length;
-      const claudeStrongCount = usage.strong.filter((item) =>
+      const claudeUsageCount = usage.usageEvents.filter((item) =>
         item.kind.startsWith("claude_"),
       ).length;
-      const opencodeStrongCount = usage.strong.filter((item) =>
+      const opencodeUsageCount = usage.usageEvents.filter((item) =>
         item.kind.startsWith("opencode_"),
       ).length;
-      const cursorStrongCount = usage.strong.filter((item) =>
+      const cursorUsageCount = usage.usageEvents.filter((item) =>
         item.kind.startsWith("cursor_"),
       ).length;
-      const filesystemStrongCount = usage.strong.filter((item) =>
+      const filesystemUsageCount = usage.usageEvents.filter((item) =>
         item.kind.startsWith("filesystem_"),
       ).length;
-      const opencodeWeakCount = usage.weak.filter((item) =>
+      const opencodeMentionCount = usage.mentions.filter((item) =>
         item.kind.startsWith("opencode_"),
       ).length;
-      const cursorWeakCount = usage.weak.filter((item) =>
+      const cursorMentionCount = usage.mentions.filter((item) =>
         item.kind.startsWith("cursor_"),
       ).length;
-      const filesystemWeakCount = usage.weak.filter((item) =>
+      const filesystemMentionCount = usage.mentions.filter((item) =>
         item.kind.startsWith("filesystem_"),
       ).length;
-      const strongAgeDays = ageDays(lastStrong, now);
-      const weakAgeDays = ageDays(lastWeak, now);
+      const usageAgeDays = ageDays(lastUsed, now);
+      const mentionAgeDays = ageDays(lastMention, now);
       const signalAgeDays = ageDays(lastSignal, now);
       const installedAt = usage.birthtime || usage.mtime;
       const installedAgeDays = ageDays(installedAt, now);
       const dotPrefixed = usage.skill.startsWith(".");
-      const recentWeak =
-        lastWeak && weakAgeDays !== null && weakAgeDays <= protectWeakDays;
+      const pluginManaged = Boolean(usage.managedByPluginCache);
+      const recentMention =
+        lastMention && mentionAgeDays !== null && mentionAgeDays <= protectMentionDays;
 
       let cleanupCandidate = false;
       let cleanupReason = "";
-      if (lastStrong && strongAgeDays > options.unusedDays) {
-        if (recentWeak) {
-          cleanupReason = `recent path mention ${weakAgeDays} days ago`;
+      if (lastUsed && usageAgeDays > options.unusedDays) {
+        if (recentMention) {
+          cleanupReason = `recent mention ${mentionAgeDays} days ago`;
         } else {
           cleanupCandidate = true;
-          cleanupReason = `last verified use ${strongAgeDays} days ago`;
+          cleanupReason = `used ${usageAgeDays} days ago`;
         }
       } else if (
-        !lastStrong &&
+        !lastUsed &&
         !dotPrefixed &&
         installedAgeDays !== null &&
         installedAgeDays >= options.unusedInstalledDays
       ) {
-        if (recentWeak) {
-          cleanupReason = `recent path mention ${weakAgeDays} days ago`;
+        if (recentMention) {
+          cleanupReason = `recent mention ${mentionAgeDays} days ago`;
         } else {
           cleanupCandidate = true;
-          cleanupReason = lastWeak
-            ? `no verified use; last path mention ${weakAgeDays} days ago`
+          cleanupReason = lastMention
+            ? `no usage evidence; last mention ${mentionAgeDays} days ago`
             : `never used; installed ${installedAgeDays} days ago`;
         }
+      }
+      if (pluginManaged) {
+        cleanupCandidate = false;
+        cleanupReason = "managed by plugin cache";
       }
 
       const row = {
@@ -256,40 +284,74 @@ export function buildRows(skills, options) {
         installs: usage.installs,
         paths: usage.installs.map((item) => item.path),
         skill_dirs: usage.installs.map((item) => item.skillDir),
+        managed_by_plugin_cache: pluginManaged,
         is_symlink: Boolean(usage.isSymlink),
         link_target: usage.linkTarget || "",
         description: usage.description || "",
         description_token_cost: descriptionTokenCost,
-        verified_uses_14d: verifiedUses14d.length,
-        used_14d_tokens: descriptionTokenCost * verifiedUses14d.length,
-        verified_uses_window: recentStrongSignals.length,
-        used_window_tokens: descriptionTokenCost * recentStrongSignals.length,
+        usage_count: usage.usageEvents.length,
+        mention_count: usage.mentions.length,
+        usage_confidence: lastUsed ? "verified" : lastMention ? "mentioned" : "none",
+        usage_scope: directLastUsageEvidence ? "direct" : lastUsageEvidence ? "same-name" : "",
+        last_used: formatDate(lastUsed),
+        last_direct_use: formatDate(lastDirectUse),
+        last_seen: formatDate(lastSignal),
+        last_usage_chat_title: evidenceTitle(lastUsageEvidence),
+        last_usage_source: lastUsageEvidence?.source || "",
+        last_usage_file: lastUsageEvidence?.sourceFile || "",
+        last_usage_line: lastUsageEvidence?.sourceLine || "",
+        last_usage_href: fileHref(lastUsageEvidence?.sourceFile),
+        usage_events_14d: usageEvents14d.length,
+        used_14d_tokens: descriptionTokenCost * usageEvents14d.length,
+        usage_events_window: recentUsageEvents.length,
+        used_window_tokens: descriptionTokenCost * recentUsageEvents.length,
         usage_window_days: savingsDays,
-        strong_count: usage.strong.length,
-        codex_strong_count: codexStrongCount,
-        claude_strong_count: claudeStrongCount,
-        opencode_strong_count: opencodeStrongCount,
-        cursor_strong_count: cursorStrongCount,
-        filesystem_strong_count: filesystemStrongCount,
-        last_strong_read: formatDate(lastStrong),
-        last_verified_use: formatDate(lastStrong),
-        last_verified_chat_title: evidenceTitle(lastStrongEvidence),
-        last_verified_source: lastStrongEvidence?.source || "",
-        last_verified_file: lastStrongEvidence?.sourceFile || "",
-        last_verified_line: lastStrongEvidence?.sourceLine || "",
-        last_verified_href: fileHref(lastStrongEvidence?.sourceFile),
-        strong_age_days: strongAgeDays,
-        weak_path_refs: usage.weak.length,
-        verified_use_count: usage.strong.length,
-        path_mention_count: usage.weak.length,
-        recent_strong_count: recentStrongSignals.length,
-        recent_weak_count: recentWeakSignals.length,
-        recent_signal_count: recentStrongSignals.length + recentWeakSignals.length,
-        opencode_weak_count: opencodeWeakCount,
-        cursor_weak_count: cursorWeakCount,
-        filesystem_weak_count: filesystemWeakCount,
-        last_path_ref: formatDate(lastWeak),
-        weak_age_days: weakAgeDays,
+        codex_usage_count: codexUsageCount,
+        claude_usage_count: claudeUsageCount,
+        opencode_usage_count: opencodeUsageCount,
+        cursor_usage_count: cursorUsageCount,
+        filesystem_usage_count: filesystemUsageCount,
+        same_name_usage_count:
+          (usageEventCountBySkill.get(usage.skill) || 0) - usage.usageEvents.length,
+        recent_usage_count: recentUsageEvents.length,
+        recent_mention_count: recentMentions.length,
+        opencode_mention_count: opencodeMentionCount,
+        cursor_mention_count: cursorMentionCount,
+        filesystem_mention_count: filesystemMentionCount,
+        usage_age_days: usageAgeDays,
+        mention_age_days: mentionAgeDays,
+        last_mention: formatDate(lastMention),
+        verified_uses_14d: usageEvents14d.length,
+        verified_uses_window: recentUsageEvents.length,
+        strong_count: usage.usageEvents.length,
+        same_name_verified_use_count:
+          (usageEventCountBySkill.get(usage.skill) || 0) - usage.usageEvents.length,
+        codex_strong_count: codexUsageCount,
+        claude_strong_count: claudeUsageCount,
+        opencode_strong_count: opencodeUsageCount,
+        cursor_strong_count: cursorUsageCount,
+        filesystem_strong_count: filesystemUsageCount,
+        last_strong_read: formatDate(lastDirectUse),
+        last_direct_verified_use: formatDate(lastDirectUse),
+        last_verified_use: formatDate(lastUsed),
+        last_verified_scope: directLastUsageEvidence ? "direct" : lastUsageEvidence ? "same-name" : "",
+        last_verified_chat_title: evidenceTitle(lastUsageEvidence),
+        last_verified_source: lastUsageEvidence?.source || "",
+        last_verified_file: lastUsageEvidence?.sourceFile || "",
+        last_verified_line: lastUsageEvidence?.sourceLine || "",
+        last_verified_href: fileHref(lastUsageEvidence?.sourceFile),
+        strong_age_days: usageAgeDays,
+        weak_path_refs: usage.mentions.length,
+        verified_use_count: usage.usageEvents.length,
+        path_mention_count: usage.mentions.length,
+        recent_strong_count: recentUsageEvents.length,
+        recent_weak_count: recentMentions.length,
+        recent_signal_count: recentUsageEvents.length + recentMentions.length,
+        opencode_weak_count: opencodeMentionCount,
+        cursor_weak_count: cursorMentionCount,
+        filesystem_weak_count: filesystemMentionCount,
+        last_path_ref: formatDate(lastMention),
+        weak_age_days: mentionAgeDays,
         last_signal_at: formatDate(lastSignal),
         last_any_signal: formatDate(lastSignal),
         signal_age_days: signalAgeDays,
@@ -309,7 +371,8 @@ export function buildRows(skills, options) {
         cleanupCandidate,
         cleanupReason,
         dotPrefixed,
-        recentWeak,
+        pluginManaged,
+        recentMention,
       });
 
       const omitMatch = findOmitMatch(row, options.omitPatterns);
@@ -340,11 +403,11 @@ export function buildRows(skills, options) {
       if (a.cleanup_candidate !== b.cleanup_candidate) {
         return a.cleanup_candidate ? -1 : 1;
       }
-      if (a.last_strong_read && b.last_strong_read) {
-        return b.last_strong_read.localeCompare(a.last_strong_read);
+      if (a.last_direct_use && b.last_direct_use) {
+        return b.last_direct_use.localeCompare(a.last_direct_use);
       }
-      if (a.last_strong_read) return -1;
-      if (b.last_strong_read) return 1;
+      if (a.last_direct_use) return -1;
+      if (b.last_direct_use) return 1;
       return a.skill.localeCompare(b.skill);
     });
 }
@@ -367,16 +430,30 @@ export function payloadFor(rows, options, scanStats, now = new Date()) {
       candidates: candidates.length,
       omitted: omitted.length,
       staleCandidates: candidates.filter((row) =>
-        row.cleanup_reason.startsWith("last verified use"),
+        row.cleanup_reason.startsWith("used"),
       ).length,
       neverUsedCandidates: candidates.filter((row) =>
         row.cleanup_reason.startsWith("never used"),
       ).length,
+      mentionOnlyCandidates: candidates.filter((row) =>
+        row.cleanup_reason.startsWith("no usage evidence"),
+      ).length,
+      recentMentionProtected: rows.filter((row) =>
+        row.cleanup_reason.startsWith("recent mention"),
+      ).length,
+      codexUsage: rows.reduce((sum, row) => sum + row.codex_usage_count, 0),
+      claudeUsage: rows.reduce((sum, row) => sum + row.claude_usage_count, 0),
+      opencodeUsage: rows.reduce((sum, row) => sum + row.opencode_usage_count, 0),
+      cursorUsage: rows.reduce((sum, row) => sum + row.cursor_usage_count, 0),
+      filesystemUsage: rows.reduce((sum, row) => sum + row.filesystem_usage_count, 0),
+      opencodeMentions: rows.reduce((sum, row) => sum + row.opencode_mention_count, 0),
+      cursorMentions: rows.reduce((sum, row) => sum + row.cursor_mention_count, 0),
+      filesystemMentions: rows.reduce((sum, row) => sum + row.filesystem_mention_count, 0),
       weakOnlyCandidates: candidates.filter((row) =>
-        row.cleanup_reason.startsWith("no verified use"),
+        row.cleanup_reason.startsWith("no usage evidence"),
       ).length,
       recentWeakProtected: rows.filter((row) =>
-        row.cleanup_reason.startsWith("recent path mention"),
+        row.cleanup_reason.startsWith("recent mention"),
       ).length,
       codexStrong: rows.reduce((sum, row) => sum + row.codex_strong_count, 0),
       claudeStrong: rows.reduce((sum, row) => sum + row.claude_strong_count, 0),

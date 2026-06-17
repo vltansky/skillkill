@@ -45,15 +45,16 @@ The CLI will:
 - Scan local installed agent skills.
 - Use Codex, Claude, OpenCode, Cursor, and explicit local filesystem evidence
   roots by default where safe local stores are known.
-- Treat Codex injected skill blocks and Claude `attributionSkill` as strong
-  usage evidence.
-- Treat structured OpenCode `read` tool parts that target an installed
-  `SKILL.md` as strong evidence.
-- Treat OpenCode message paths, Cursor chat-store paths, explicit
-  `--evidence-dir` path matches, `atime`, and raw path mentions as weak
+- Treat Codex injected skill blocks and Claude `attributionSkill` as usage
   evidence.
-- Defer cleanup for skills with recent weak evidence, while keeping that
-  evidence labeled as lower confidence than native provider attribution.
+- Treat structured read tool calls and captured shell commands that read an
+  installed `SKILL.md` as usage evidence.
+- Treat OpenCode message paths, Cursor chat-store paths, Cursor transcript
+  path mentions that are not structured reads, explicit `--evidence-dir` path
+  matches that are not structured reads or read commands, `atime`, and raw path
+  mentions as lower-confidence mention evidence.
+- Defer cleanup for skills with recent mentions, while keeping that evidence
+  labeled as lower confidence than native provider attribution.
 - Open an interactive terminal review by default when stdin/stdout are terminals.
 - Print a static dry-run candidate table when output is piped or
   `--no-interactive` is passed.
@@ -66,7 +67,7 @@ The CLI will:
   omit file at `~/.config/skillkill/omit`.
 - Support `--commands`, `--json`, `--csv`, and `--snapshot`.
 - Support `--source opencode`, `--source cursor`, `--source filesystem`,
-  `--evidence-dir`, and `--protect-weak-days`.
+  `--evidence-dir`, and `--protect-mention-days`.
 - Stay scoped to whole skill directories, not files inside a skill.
 - Treat richer TUI search/filter and risk-tier features as later improvements.
 
@@ -131,8 +132,8 @@ focused on installed agent skills.
 - Move or rewrite the current scanner into this project.
 - Split scanner, row-building, output formatting, and deletion into small
   modules.
-- Add fixture tests for Codex skill blocks, Claude `attributionSkill`, weak
-  path references, never-used skills, and protected dot-prefixed skills.
+- Add fixture tests for Codex skill blocks, Claude `attributionSkill`,
+  mentions, never-used skills, and protected dot-prefixed skills.
 - Implement the first-release command surface from `docs/plan.md`.
 - Link `$HOME/.local/bin/skillkill` to the project entrypoint.
 - Update the old installed skill doc to delegate to this CLI.

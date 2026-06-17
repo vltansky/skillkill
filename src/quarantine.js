@@ -45,6 +45,8 @@ function cleanupEntry(row, extra = {}) {
     reason: row.cleanup_reason,
     originalPath: install.skillDir || row.skill_dir,
     descriptionTokenCost: row.description_token_cost,
+    recentUsageCount: row.recent_usage_count,
+    recentMentionCount: row.recent_mention_count,
     recentStrongCount: row.recent_strong_count,
     recentWeakCount: row.recent_weak_count,
     ...rest,

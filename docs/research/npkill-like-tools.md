@@ -21,7 +21,7 @@ is a narrow npkill-style scanner for one artifact class: installed agent skills.
 | Project | Scope | Interaction Model | What Matters For `skillkill` |
 | --- | --- | --- | --- |
 | `zaldih/npkill` | Finds old/heavy `node_modules` folders | TUI list, keyboard delete, multi-select, filters, JSON output | Best baseline for a focused developer-artifact cleanup tool |
-| `Tlaloc-Es/killpy` | Finds Python envs, caches, build artifacts | TUI plus headless commands | Strong analogue for one ecosystem's stale environments |
+| `Tlaloc-Es/killpy` | Finds Python envs, caches, build artifacts | TUI plus headless commands | Close analogue for one ecosystem's stale environments |
 | `trinhminhtriet/dwipe` | Directory size visualization and cleanup | TUI navigator with two-step delete and trash toggle | Good deletion-safety interaction ideas |
 | `guhcostan/mac-cleaner-cli` | macOS caches, logs, dev files, apps | Interactive category selection | Good risk-tiering model, but broader than `skillkill` needs |
 | `us/null-e` | Multi-language developer artifacts and caches | CLI commands plus TUI | Good broad cleanup command taxonomy and safety features |
@@ -192,8 +192,8 @@ Evidence:
 1. Stay narrow like `npkill`: one artifact class, installed agent skills.
 2. Keep terminal-first operation; use interactive review in real terminals and
    static output for pipes/automation.
-3. Show size/context when possible: skill name, path, installed age, last strong
-   use, evidence counts, and candidate reason.
+3. Show size/context when possible: skill name, path, installed age, last usage,
+   evidence counts, and candidate reason.
 4. Keep deletion explicit. Prefer `--apply`, with `--dry-run` implied by
    default behavior.
 5. Add omit/whitelist support so known-good stale skills do not keep appearing.

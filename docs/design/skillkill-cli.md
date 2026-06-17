@@ -9,15 +9,15 @@ a skill is still useful.
 
 `skillkill` should answer two questions:
 
-1. Which installed skills have verified evidence of recent use?
+1. Which installed skills have usage evidence?
 2. Which skills are reasonable cleanup candidates?
 
 ## Goals
 
 - Provide a terminal-first cleanup workflow.
 - Keep the default command non-destructive.
-- Use verified transcript evidence for usage decisions.
-- Use path mentions to avoid risky cleanup when provider-native signals
+- Use transcript evidence for usage decisions.
+- Use mentions to avoid risky cleanup when provider-native signals
   are missing.
 - Produce copy-pasteable removal commands.
 - Support machine-readable output for reports and automation.
@@ -34,42 +34,53 @@ a skill is still useful.
 
 ## Evidence Model
 
-Verified use:
+Usage:
 
 - Codex transcript JSONL contains an injected `<skill><name>...<path>...` block.
+- Codex transcript JSONL records a shell command that reads an installed
+  `SKILL.md`.
 - Claude transcript JSONL contains `attributionSkill`.
 - Claude app session JSON contains `attributionSkill`.
+- Claude or Claude app session records a structured read tool call, nested
+  Claude `tool_use` read block, or shell command that reads an installed
+  `SKILL.md`.
 - OpenCode tool-part JSON contains a structured `read` tool input targeting
   an installed skill `SKILL.md`.
+- Cursor agent transcript JSONL contains a structured read tool call targeting
+  an installed skill `SKILL.md`.
+- User-provided `--evidence-dir` JSON/JSONL contains a structured read tool
+  record or shell command that reads an installed `SKILL.md`.
 
-Path mentions:
+Mentions:
 
 - Raw path mentions in chat history.
 - OpenCode message JSON path mentions.
 - OpenCode tool-part JSON path mentions that are not structured `read` inputs.
-- Cursor chat store path mentions.
-- User-provided `--evidence-dir` path mentions.
+- Cursor agent transcript or chat store path mentions that are not structured
+  `read` inputs.
+- User-provided `--evidence-dir` path mentions that are not structured reads
+  or read commands.
 - `SKILL.md` access time.
 
-Path mentions may be displayed as context. Recent path mentions defer cleanup,
-but they do not prove invocation and should be labeled as lower confidence.
+Mentions may be displayed as context. Recent mentions defer cleanup, but they
+do not prove invocation and should be labeled as lower confidence.
 
 ## Candidate Rules
 
 Default thresholds:
 
-- Previously used skills become stale after 45 days without verified use.
+- Previously used skills become stale after 45 days without usage.
 - Never-used skills become candidates 7 days after install.
-- Skills with path mentions in the last 45 days are not automatic candidates.
+- Skills with mentions in the last 45 days are not automatic candidates.
 - Dot-prefixed system skills are preserved by default.
 
 A candidate row should include:
 
 - Skill name
 - Skill path
-- Last verified use timestamp
-- Codex verified-use count
-- Claude verified-use count
+- Last used timestamp
+- Codex usage count
+- Claude usage count
 - Cleanup reason
 - Removal command
 
@@ -87,7 +98,7 @@ skillkill --whitelist "ck-*"
 skillkill --no-interactive
 skillkill --unused-days 60
 skillkill --unused-installed-days 14
-skillkill --protect-weak-days 30
+skillkill --protect-mention-days 30
 skillkill --commands
 skillkill --json
 skillkill --csv /tmp/skillkill.csv
@@ -108,8 +119,8 @@ Suggested semantics:
 - `--source`: choose Codex, Claude, OpenCode, Cursor, extra filesystem roots,
   or all known local sources.
 - `--evidence-dir`: add local transcript/log directories that should count as
-  weak path-reference evidence.
-- `--protect-weak-days`: keep recent path mentions out of cleanup candidates.
+  mention evidence.
+- `--protect-mention-days`: keep recent mentions out of cleanup candidates.
 - `--omit` / `--whitelist`: remove exact or glob-matched skill names and paths
   from cleanup candidates.
 - `--omit-file`: load persistent omit patterns from a file.

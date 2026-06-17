@@ -1,4 +1,5 @@
 import os from "node:os";
+import fs from "node:fs";
 import path from "node:path";
 import { renderLogo } from "./logo.js";
 
@@ -23,6 +24,7 @@ export const DEFAULT_OPTIONS = {
   source: "all",
   unusedDays: 45,
   unusedInstalledDays: 7,
+  protectMentionDays: 45,
   protectWeakDays: 45,
   savingsDays: 30,
   limit: 40,
@@ -72,6 +74,24 @@ function readNumber(argv, index, arg) {
   return value;
 }
 
+function walkSkillRootEntries(root, out = new Set()) {
+  if (!fs.existsSync(root)) return out;
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const fullPath = path.join(root, entry.name);
+    if (!entry.isDirectory()) continue;
+    if (entry.name === "skills") {
+      out.add(fullPath);
+      continue;
+    }
+    walkSkillRootEntries(fullPath, out);
+  }
+  return out;
+}
+
+function codexPluginSkillRoots(codexDir) {
+  return [...walkSkillRootEntries(path.join(codexDir, "plugins", "cache"))];
+}
+
 export function printHelp() {
   return `${renderLogo()}
 
@@ -92,11 +112,12 @@ Options:
   --claude-dir PATH               Claude state directory (default: ~/.claude)
   --claude-app-dir PATH           Claude desktop state directory
   --opencode-dir PATH             OpenCode state directory (default: ~/.local/share/opencode)
-  --cursor-dir PATH               Cursor chats directory (default: ~/.cursor/chats)
-  --evidence-dir PATH             Extra local transcript/log directory to scan for path mentions
-  --unused-days N                 Mark skills stale after last verified use (default: 45)
+  --cursor-dir PATH               Cursor chats directory, or ~/.cursor root (default: ~/.cursor/chats)
+  --evidence-dir PATH             Extra local transcript/log directory to scan for mentions
+  --unused-days N                 Mark skills stale after last use (default: 45)
   --unused-installed-days N       Propose never-used skills older than N days (default: 7)
-  --protect-weak-days N           Defer cleanup after recent path mentions (default: 45)
+  --protect-mention-days N        Defer cleanup after recent mentions (default: 45)
+  --protect-weak-days N           Deprecated alias for --protect-mention-days
   --savings-days N                Estimate token effect from recent activity (default: 30)
   --limit N                       Table row limit (default: 40)
   --commands                      Print all candidate rm commands
@@ -179,8 +200,9 @@ export function parseArgs(argv) {
     } else if (arg === "--unused-installed-days") {
       options.unusedInstalledDays = readNumber(argv, i, arg);
       i += 1;
-    } else if (arg === "--protect-weak-days") {
-      options.protectWeakDays = readNumber(argv, i, arg);
+    } else if (arg === "--protect-mention-days" || arg === "--protect-weak-days") {
+      options.protectMentionDays = readNumber(argv, i, arg);
+      options.protectWeakDays = options.protectMentionDays;
       i += 1;
     } else if (arg === "--savings-days") {
       options.savingsDays = readNumber(argv, i, arg);
@@ -271,7 +293,7 @@ export function parseArgs(argv) {
     throw new Error("--undo cannot be combined with scan/output/apply options");
   }
 
-  const skillsDirs = [
+  const configuredSkillsDirs = [
     ...new Set(
       options.skillsDirs
         .flatMap((value) =>
@@ -283,13 +305,23 @@ export function parseArgs(argv) {
         .map((item) => path.resolve(expandHome(item))),
     ),
   ];
+  const codexDir = path.resolve(expandHome(options.codexDir));
+  const defaultSkillsDirs = DEFAULT_OPTIONS.skillsDirs.map((item) =>
+    path.resolve(expandHome(item)),
+  );
+  const usingDefaultSkillDirs =
+    configuredSkillsDirs.length === defaultSkillsDirs.length &&
+    configuredSkillsDirs.every((item, index) => item === defaultSkillsDirs[index]);
+  const skillsDirs = usingDefaultSkillDirs
+    ? [...new Set([...configuredSkillsDirs, ...codexPluginSkillRoots(codexDir)])]
+    : configuredSkillsDirs;
 
   return {
     ...options,
     commandArgs: options.commandArgs,
     skillsDir: skillsDirs[0],
     skillsDirs,
-    codexDir: path.resolve(expandHome(options.codexDir)),
+    codexDir,
     claudeDir: path.resolve(expandHome(options.claudeDir)),
     claudeAppDir: path.resolve(expandHome(options.claudeAppDir)),
     opencodeDir: path.resolve(expandHome(options.opencodeDir)),

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
@@ -96,7 +97,7 @@ function makeFixture() {
   for (const name of [
     "stale-skill",
     "recent-skill",
-    "weak-only",
+    "mention-only",
     "never-used",
     ".system-skill",
   ]) {
@@ -112,7 +113,7 @@ function makeFixture() {
       }),
       JSON.stringify({
         timestamp: "2026-06-14T00:00:00Z",
-        message: `Mention only: ${skillPath("weak-only")}`,
+        message: `Mention only: ${skillPath("mention-only")}`,
       }),
     ].join("\n"),
   );
@@ -168,6 +169,29 @@ test("defaults to common installed skill roots and allows repeatable path overri
   const custom = parseArgs(["--path", "/tmp/one", "--path", "/tmp/two"]);
   assert.deepEqual(custom.skillsDirs, ["/tmp/one", "/tmp/two"]);
   assert.equal(custom.skillsDir, "/tmp/one");
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillkill-plugin-root-"));
+  const pluginSkills = path.join(
+    root,
+    "codex",
+    "plugins",
+    "cache",
+    "market",
+    "plugin",
+    "version",
+    "skills",
+  );
+  fs.mkdirSync(path.join(pluginSkills, "plugin-skill"), { recursive: true });
+  fs.writeFileSync(path.join(pluginSkills, "plugin-skill", "SKILL.md"), "# plugin");
+  const pluginDefaults = parseArgs(["--codex-dir", path.join(root, "codex")]);
+  assert.equal(pluginDefaults.skillsDirs.includes(pluginSkills), true);
+  const customOnly = parseArgs([
+    "--codex-dir",
+    path.join(root, "codex"),
+    "--path",
+    "/tmp/one",
+  ]);
+  assert.equal(customOnly.skillsDirs.includes(pluginSkills), false);
 });
 
 test("formats human numbers with separators", () => {
@@ -204,8 +228,8 @@ test("builds rows from verified Codex and Claude evidence", async () => {
   assert.equal(byName.get("stale-skill").used_14d_tokens, 0);
   assert.equal(byName.get("stale-skill").verified_uses_window, 0);
   assert.equal(byName.get("stale-skill").used_window_tokens, 0);
-  assert.match(byName.get("stale-skill").cleanup_reason, /last verified use/);
-  assert.equal(byName.get("stale-skill").codex_strong_count, 1);
+  assert.match(byName.get("stale-skill").cleanup_reason, /used/);
+  assert.equal(byName.get("stale-skill").codex_usage_count, 1);
   assert.equal(byName.get("stale-skill").verified_use_count, 1);
   assert.equal(byName.get("stale-skill").last_verified_chat_title, "session");
   assert.match(byName.get("stale-skill").last_verified_href, /^file:\/\//);
@@ -221,14 +245,13 @@ test("builds rows from verified Codex and Claude evidence", async () => {
     byName.get("recent-skill").used_window_tokens,
     byName.get("recent-skill").description_token_cost,
   );
-  assert.equal(byName.get("recent-skill").claude_strong_count, 1);
+  assert.equal(byName.get("recent-skill").claude_usage_count, 1);
 
-  assert.equal(byName.get("weak-only").strong_count, 0);
-  assert.equal(byName.get("weak-only").weak_path_refs, 1);
-  assert.equal(byName.get("weak-only").path_mention_count, 1);
-  assert.equal(byName.get("weak-only").cleanup_candidate, false);
-  assert.equal(byName.get("weak-only").risk, "protected");
-  assert.match(byName.get("weak-only").cleanup_reason, /recent path mention/);
+  assert.equal(byName.get("mention-only").usage_count, 0);
+  assert.equal(byName.get("mention-only").mention_count, 1);
+  assert.equal(byName.get("mention-only").cleanup_candidate, false);
+  assert.equal(byName.get("mention-only").risk, "protected");
+  assert.match(byName.get("mention-only").cleanup_reason, /recent mention/);
 
   assert.equal(byName.get(".system-skill").cleanup_candidate, false);
   assert.equal(rows[0].cleanup_candidate, true);
@@ -238,10 +261,27 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
   const fixture = makeFixture();
   for (const name of [
     "claude-app-skill",
+    "claude-tool-read",
+    "claude-nested-read",
+    "claude-command-read",
+    "claude-skill-tool",
+    "claude-command-name",
+    "claude-invoked-skill",
+    "claude-config-skill",
+    "claude-script",
+    "codex-command-read",
+    "codex-rg-read",
+    "codex-script",
     "opencode-only",
     "opencode-read",
     "cursor-only",
+    "cursor-sqlite",
+    "cursor-transcript-read",
+    "cursor-transcript-rg",
     "extra-evidence",
+    "relative-command-read",
+    "home-command-read",
+    "braced-home-command-read",
   ]) {
     fixture.writeSkill(name);
   }
@@ -254,6 +294,103 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
       lastActivityAt: "2026-06-13T00:00:00Z",
       events: [{ attributionSkill: "claude-app-skill" }],
     }),
+  );
+  fs.appendFileSync(
+    path.join(fixture.claudeDir, "projects", "project.jsonl"),
+    [
+      JSON.stringify({
+        timestamp: "2026-06-07T00:00:00Z",
+        tool: "Read",
+        input: { file_path: fixture.skillPath("claude-tool-read") },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        timestamp: "2026-06-06T12:00:00Z",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_1",
+              name: "Read",
+              input: { file_path: fixture.skillPath("claude-nested-read") },
+            },
+          ],
+        },
+      }),
+      JSON.stringify({
+        timestamp: "2026-06-06T00:00:00Z",
+        command: `cat ${fixture.skillPath("claude-command-read")}`,
+      }),
+      JSON.stringify({
+        timestamp: "2026-06-06T13:00:00Z",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              name: "Skill",
+              input: { skill: "claude-skill-tool", args: "" },
+            },
+          ],
+        },
+      }),
+      JSON.stringify({
+        timestamp: "2026-06-06T14:00:00Z",
+        message:
+          "<command-name>claude-command-name</command-name><skill-format>true</skill-format>",
+      }),
+      JSON.stringify({
+        timestamp: "2026-06-06T15:00:00Z",
+        attachments: [
+          {
+            type: "invoked_skills",
+            skills: [
+              {
+                name: "claude-invoked-skill",
+                path: fixture.skillPath("claude-invoked-skill"),
+                content: "# fixture",
+              },
+            ],
+          },
+        ],
+      }),
+      JSON.stringify({
+        timestamp: "2026-06-06T16:00:00Z",
+        command: `node ${path.dirname(fixture.skillPath("claude-script"))}/scripts/run.js`,
+      }),
+      "",
+    ].join("\n"),
+  );
+  fs.writeFileSync(
+    path.join(fixture.root, ".claude.json"),
+    JSON.stringify({
+      skillUsage: {
+        "claude-config-skill": {
+          usageCount: 2,
+          lastUsedAt: "2026-06-06T17:00:00Z",
+        },
+      },
+    }),
+  );
+  fs.appendFileSync(
+    path.join(fixture.codexDir, "sessions", "session.jsonl"),
+    [
+      "",
+      JSON.stringify({
+        timestamp: "2026-06-05T00:00:00Z",
+        message: `exec\nsed -n '1,120p' ${fixture.skillPath("codex-command-read")}\nsucceeded`,
+      }),
+      JSON.stringify({
+        timestamp: "2026-06-04T00:00:00Z",
+        message: `exec\nrg "description" ${fixture.skillPath("codex-rg-read")}\nsucceeded`,
+      }),
+      JSON.stringify({
+        timestamp: "2026-06-04T01:00:00Z",
+        message: `exec\nnode ${path.dirname(fixture.skillPath("codex-script"))}/scripts/run.js\nsucceeded`,
+      }),
+      "",
+    ].join("\n"),
   );
 
   const opencodeMessageDir = path.join(fixture.opencodeDir, "storage", "message", "session");
@@ -283,15 +420,91 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
 
   const cursorChatDir = path.join(fixture.cursorDir, "chat");
   fs.mkdirSync(cursorChatDir, { recursive: true });
+  const cursorTextStore = path.join(cursorChatDir, "store.db");
+  const cursorTextSqlite = spawnSync(
+    "sqlite3",
+    [
+      cursorTextStore,
+      [
+        "create table blobs (id text primary key, data blob);",
+        `insert into blobs values ('message-1', '{"content":"read ${fixture.skillPath("cursor-only")}"}');`,
+      ].join(" "),
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(cursorTextSqlite.status, 0, cursorTextSqlite.stderr);
+
+  const cursorSqliteDir = path.join(fixture.cursorDir, "sqlite-chat");
+  fs.mkdirSync(cursorSqliteDir, { recursive: true });
+  const cursorStore = path.join(cursorSqliteDir, "store.db");
+  const sqlite = spawnSync(
+    "sqlite3",
+    [
+      cursorStore,
+      [
+        "create table blobs (id text primary key, data blob);",
+        `insert into blobs values ('message-1', '{"content":"read ${fixture.skillPath("cursor-sqlite")}"}');`,
+      ].join(" "),
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(sqlite.status, 0, sqlite.stderr);
+
+  const cursorTranscriptDir = path.join(
+    fixture.cursorDir,
+    "projects",
+    "fixture-project",
+    "agent-transcripts",
+    "session",
+  );
+  fs.mkdirSync(cursorTranscriptDir, { recursive: true });
   fs.writeFileSync(
-    path.join(cursorChatDir, "store.db"),
-    `blob text with ${fixture.skillPath("cursor-only")}`,
+    path.join(cursorTranscriptDir, "session.jsonl"),
+    `${JSON.stringify({
+      role: "assistant",
+      timestamp: "2026-06-10T00:00:00Z",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            name: "ReadFile",
+            input: { path: fixture.skillPath("cursor-transcript-read") },
+          },
+          {
+            type: "tool_use",
+            name: "rg",
+            input: {
+              pattern: "description",
+              path: fixture.skillPath("cursor-transcript-rg"),
+            },
+          },
+        ],
+      },
+    })}\n`,
   );
 
   fs.mkdirSync(fixture.evidenceDir, { recursive: true });
   fs.writeFileSync(
     path.join(fixture.evidenceDir, "agent.log"),
     `referenced ${fixture.skillPath("extra-evidence")}`,
+  );
+  fs.writeFileSync(
+    path.join(fixture.evidenceDir, "commands.jsonl"),
+    [
+      JSON.stringify({
+        timestamp: "2026-06-09T00:00:00Z",
+        command: "cat .agents/skills/relative-command-read/SKILL.md",
+      }),
+      JSON.stringify({
+        timestamp: "2026-06-08T00:00:00Z",
+        command: "sed -n '1,120p' $HOME/.codex/skills/home-command-read/SKILL.md",
+      }),
+      JSON.stringify({
+        timestamp: "2026-06-07T00:00:00Z",
+        command:
+          "head -40 ${HOME}/.codex/skills/braced-home-command-read/SKILL.md",
+      }),
+    ].join("\n"),
   );
 
   const skills = collectSkills(fixture.skillsDir);
@@ -313,20 +526,66 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
   });
   const byName = new Map(rows.map((row) => [row.skill, row]));
 
-  assert.equal(byName.get("claude-app-skill").claude_strong_count, 1);
-  assert.equal(byName.get("claude-app-skill").last_strong_read, "2026-06-13 00:00:00");
+  assert.equal(byName.get("stale-skill").codex_usage_count, 1);
+  assert.equal(byName.get("stale-skill").last_verified_use, "2026-04-01 00:00:00");
+  assert.equal(byName.get("claude-app-skill").claude_usage_count, 1);
+  assert.equal(byName.get("claude-app-skill").last_direct_use, "2026-06-13 00:00:00");
   assert.equal(byName.get("claude-app-skill").last_verified_use, "2026-06-13 00:00:00");
-  assert.equal(byName.get("opencode-only").opencode_weak_count, 1);
+  assert.equal(byName.get("claude-tool-read").claude_usage_count, 1);
+  assert.equal(byName.get("claude-tool-read").last_verified_use, "2026-06-07 00:00:00");
+  assert.equal(byName.get("claude-nested-read").claude_usage_count, 1);
+  assert.equal(byName.get("claude-nested-read").last_verified_use, "2026-06-06 12:00:00");
+  assert.equal(byName.get("claude-command-read").claude_usage_count, 1);
+  assert.equal(byName.get("claude-command-read").last_verified_use, "2026-06-06 00:00:00");
+  assert.equal(byName.get("claude-skill-tool").claude_usage_count, 1);
+  assert.equal(byName.get("claude-skill-tool").last_verified_use, "2026-06-06 13:00:00");
+  assert.equal(byName.get("claude-command-name").claude_usage_count, 1);
+  assert.equal(byName.get("claude-command-name").last_verified_use, "2026-06-06 14:00:00");
+  assert.equal(byName.get("claude-invoked-skill").claude_usage_count, 1);
+  assert.equal(byName.get("claude-invoked-skill").last_verified_use, "2026-06-06 15:00:00");
+  assert.equal(byName.get("claude-script").claude_usage_count, 1);
+  assert.equal(byName.get("claude-script").last_verified_use, "2026-06-06 16:00:00");
+  assert.equal(byName.get("claude-config-skill").claude_usage_count, 1);
+  assert.equal(byName.get("claude-config-skill").last_verified_use, "2026-06-06 17:00:00");
+  assert.equal(byName.get("codex-command-read").codex_usage_count, 1);
+  assert.equal(byName.get("codex-command-read").last_verified_use, "2026-06-05 00:00:00");
+  assert.equal(byName.get("codex-rg-read").codex_usage_count, 1);
+  assert.equal(byName.get("codex-rg-read").last_verified_use, "2026-06-04 00:00:00");
+  assert.equal(byName.get("codex-script").codex_usage_count, 1);
+  assert.equal(byName.get("codex-script").last_verified_use, "2026-06-04 01:00:00");
+  assert.equal(byName.get("opencode-only").opencode_mention_count, 1);
   assert.equal(byName.get("opencode-only").cleanup_candidate, false);
-  assert.match(byName.get("opencode-only").cleanup_reason, /recent path mention/);
-  assert.equal(byName.get("opencode-read").opencode_strong_count, 1);
-  assert.equal(byName.get("opencode-read").last_strong_read, "2026-06-11 00:00:00");
+  assert.match(byName.get("opencode-only").cleanup_reason, /recent mention/);
+  assert.equal(byName.get("opencode-read").opencode_usage_count, 1);
+  assert.equal(byName.get("opencode-read").last_direct_use, "2026-06-11 00:00:00");
   assert.equal(byName.get("opencode-read").last_verified_use, "2026-06-11 00:00:00");
-  assert.equal(byName.get("cursor-only").cursor_weak_count, 1);
-  assert.equal(byName.get("extra-evidence").filesystem_weak_count, 1);
+  assert.equal(byName.get("cursor-only").cursor_mention_count, 1);
+  assert.equal(byName.get("cursor-sqlite").cursor_mention_count, 1);
+  assert.equal(byName.get("cursor-transcript-read").cursor_usage_count, 1);
+  assert.equal(
+    byName.get("cursor-transcript-read").last_verified_use,
+    "2026-06-10 00:00:00",
+  );
+  assert.equal(byName.get("cursor-transcript-rg").cursor_usage_count, 1);
+  assert.equal(
+    byName.get("cursor-transcript-rg").last_verified_use,
+    "2026-06-10 00:00:00",
+  );
+  assert.equal(byName.get("extra-evidence").filesystem_mention_count, 1);
+  assert.equal(byName.get("relative-command-read").filesystem_usage_count, 1);
+  assert.equal(byName.get("relative-command-read").last_verified_use, "2026-06-09 00:00:00");
+  assert.equal(byName.get("home-command-read").filesystem_usage_count, 1);
+  assert.equal(byName.get("home-command-read").last_verified_use, "2026-06-08 00:00:00");
+  assert.equal(byName.get("braced-home-command-read").filesystem_usage_count, 1);
+  assert.equal(
+    byName.get("braced-home-command-read").last_verified_use,
+    "2026-06-07 00:00:00",
+  );
+  assert.equal(stats.codex.evidence, 4);
+  assert.equal(stats.claude.evidence, 10);
   assert.equal(stats.opencode.evidence, 3);
-  assert.equal(stats.cursor.evidence, 1);
-  assert.equal(stats.filesystem.evidence, 1);
+  assert.equal(stats.cursor.evidence, 4);
+  assert.equal(stats.filesystem.evidence, 4);
 });
 
 test("collects skills from multiple install roots and matches their path evidence", async () => {
@@ -340,12 +599,22 @@ test("collects skills from multiple install roots and matches their path evidenc
   const claudeSkill = fixture.writeSkillAt(fixture.claudeSkillsDir, "claude-installed");
   const codexSkill = fixture.writeSkillAt(fixture.codexSkillsDir, "codex-installed");
   const cursorSkill = fixture.writeSkillAt(fixture.cursorSkillsDir, "cursor-installed");
+  const duplicateDefaultSkill = fixture.writeSkillAt(fixture.skillsDir, "duplicate-installed");
+  const duplicateCodexSkill = fixture.writeSkillAt(fixture.codexSkillsDir, "duplicate-installed");
+  const pathReadDefaultSkill = fixture.writeSkillAt(fixture.skillsDir, "path-read-duplicate");
+  fixture.writeSkillAt(fixture.codexSkillsDir, "path-read-duplicate");
 
   fs.appendFileSync(
     path.join(fixture.codexDir, "sessions", "session.jsonl"),
     `\n${JSON.stringify({
       timestamp: "2026-06-13T00:00:00Z",
       message: `<skill>\n<name>codex-installed</name>\n<path>${codexSkill}</path>\n</skill>`,
+    })}\n${JSON.stringify({
+      timestamp: "2026-06-13T12:00:00Z",
+      message: `<skill>\n<name>duplicate-installed</name>\n<path>${duplicateCodexSkill}</path>\n</skill>`,
+    })}\n${JSON.stringify({
+      timestamp: "2026-06-13T13:00:00Z",
+      command: `cat ${pathReadDefaultSkill}`,
     })}\n`,
   );
   fs.appendFileSync(
@@ -357,7 +626,19 @@ test("collects skills from multiple install roots and matches their path evidenc
   );
   const cursorChatDir = path.join(fixture.cursorDir, "chat");
   fs.mkdirSync(cursorChatDir, { recursive: true });
-  fs.writeFileSync(path.join(cursorChatDir, "store.db"), `mentioned ${cursorSkill}`);
+  const cursorStore = path.join(cursorChatDir, "store.db");
+  const cursorSqlite = spawnSync(
+    "sqlite3",
+    [
+      cursorStore,
+      [
+        "create table blobs (id text primary key, data blob);",
+        `insert into blobs values ('message-1', '{"content":"mentioned ${cursorSkill}"}');`,
+      ].join(" "),
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(cursorSqlite.status, 0, cursorSqlite.stderr);
 
   const skills = collectSkills(roots);
   const stats = await scanEvidence(skills, {
@@ -379,13 +660,25 @@ test("collects skills from multiple install roots and matches their path evidenc
   const byName = new Map(rows.map((row) => [row.skill, row]));
 
   assert.equal(byName.get("claude-installed").install_root, fixture.claudeSkillsDir);
-  assert.equal(byName.get("claude-installed").claude_strong_count, 1);
+  assert.equal(byName.get("claude-installed").claude_usage_count, 1);
   assert.equal(byName.get("codex-installed").install_root, fixture.codexSkillsDir);
-  assert.equal(byName.get("codex-installed").codex_strong_count, 1);
+  assert.equal(byName.get("codex-installed").codex_usage_count, 1);
+  const duplicateRows = rows.filter((row) => row.skill === "duplicate-installed");
+  assert.equal(duplicateRows.length, 1);
+  assert.equal(duplicateRows[0].install_count, 2);
+  assert.equal(duplicateRows[0].last_verified_use, "2026-06-13 12:00:00");
+  const pathReadRows = rows.filter((row) => row.skill === "path-read-duplicate");
+  assert.equal(pathReadRows.length, 1);
+  assert.equal(pathReadRows[0].install_count, 2);
+  assert.equal(pathReadRows[0].last_verified_scope, "direct");
+  assert.equal(pathReadRows[0].last_verified_use, "2026-06-13 13:00:00");
+  assert.equal(pathReadRows[0].usage_count, 1);
+  assert.equal(pathReadRows[0].same_name_usage_count, 0);
   assert.equal(byName.get("cursor-installed").install_root, fixture.cursorSkillsDir);
-  assert.equal(byName.get("cursor-installed").cursor_weak_count, 1);
+  assert.equal(byName.get("cursor-installed").cursor_mention_count, 1);
   assert.equal(stats.cursor.evidence >= 1, true);
   assert.equal(fs.existsSync(claudeSkill), true);
+  assert.equal(fs.existsSync(duplicateDefaultSkill), true);
 });
 
 test("groups identical duplicate skill installs", () => {
@@ -496,7 +789,8 @@ test("formats cleanup commands for candidates only", async () => {
   assert.doesNotMatch(table, /stale skill cleanup, with receipts/);
   assert.match(table, /30d burn/);
   assert.match(table, /30d burn = description tokens multiplied by 2 new chats/);
-  assert.match(table, /last_verified_use/);
+  assert.match(table, /last_used/);
+  assert.doesNotMatch(table, /last_verified_use/);
   assert.match(table, /installed date/);
   assert.doesNotMatch(table, /2026-04-01 00:00:00/);
   assert.match(table, /2026-04-01 00:00/);
@@ -522,7 +816,7 @@ test("renders the ascii logo", () => {
 test("omits cleanup candidates from cli patterns and omit files", async () => {
   const fixture = makeFixture();
   const omitFile = path.join(fixture.root, "omit.txt");
-  fs.writeFileSync(omitFile, ["# keep these", "stale-skill", "weak-*"].join("\n"));
+  fs.writeFileSync(omitFile, ["# keep these", "stale-skill", "mention-*"].join("\n"));
 
   const skills = collectSkills(fixture.skillsDir);
   await scanEvidence(skills, {
@@ -550,8 +844,8 @@ test("omits cleanup candidates from cli patterns and omit files", async () => {
   assert.equal(byName.get("stale-skill").cleanup_candidate, false);
   assert.equal(byName.get("stale-skill").omitted, true);
   assert.equal(byName.get("stale-skill").omit_pattern, "stale-skill");
-  assert.equal(byName.get("weak-only").cleanup_candidate, false);
-  assert.equal(byName.get("weak-only").omit_pattern, "weak-*");
+  assert.equal(byName.get("mention-only").cleanup_candidate, false);
+  assert.equal(byName.get("mention-only").omit_pattern, "mention-*");
   assert.equal(byName.get("never-used").cleanup_candidate, false);
   assert.equal(byName.get("never-used").omit_pattern, "never-used");
 });
@@ -684,8 +978,13 @@ test("direct list json includes risk and token cost without status", async () =>
   assert.equal(stale.description.includes("fixture skill"), true);
   assert.equal(stale.description_token_cost > 0, true);
   assert.equal(stale.used_14d_tokens, 0);
-  assert.equal(stale.verified_use_count, stale.strong_count);
-  assert.equal(stale.path_mention_count, stale.weak_path_refs);
+  assert.equal(stale.usage_count, stale.verified_use_count);
+  assert.equal(stale.mention_count, stale.path_mention_count);
+  assert.equal(stale.last_used, stale.last_verified_use);
+  assert.equal(stale.last_seen, stale.last_any_signal);
+  assert.equal(stale.last_direct_use, stale.last_strong_read);
+  assert.equal(stale.recent_usage_count, stale.recent_strong_count);
+  assert.equal(stale.recent_mention_count, stale.recent_weak_count);
   assert.equal(stale.last_verified_use, stale.last_strong_read);
   assert.equal(stale.last_any_signal, stale.last_signal_at);
   assert.equal(payload.summary.descriptionTokenCost > 0, true);
@@ -762,8 +1061,8 @@ test("formats cleanup result with colors and token savings", () => {
           originalPath: "/tmp/skills/stale-skill",
           quarantinedPath: "/tmp/state/items/stale-skill",
           descriptionTokenCost: 11198,
-          recentStrongCount: 2,
-          recentWeakCount: 1000,
+          recentUsageCount: 2,
+          recentMentionCount: 1000,
         },
       ],
     },
@@ -775,7 +1074,7 @@ test("formats cleanup result with colors and token savings", () => {
   assert.match(output, /Saved per skill-catalog load: \x1b\[33m11,198\x1b\[0m description tokens/);
   assert.match(output, /Potential new-chat savings: \x1b\[33m11,198\x1b\[0m x \x1b\[36m3\x1b\[0m new chats in last 30 days = \x1b\[1;32m33,594\x1b\[0m tokens/);
   assert.match(output, /Observed selected-use prompt cost removed: \x1b\[33m22,396\x1b\[0m tokens/);
-  assert.match(output, /Path mentions in window: \x1b\[2m1,000\x1b\[0m/);
+  assert.match(output, /Mentions in window: \x1b\[2m1,000\x1b\[0m/);
   assert.match(output, /Command: \x1b\[36mskillkill --undo \/tmp\/skillkill\/run\/manifest\.json\x1b\[0m/);
 });
 
@@ -809,7 +1108,7 @@ test("renders interactive cleanup candidates", async () => {
   assert.doesNotMatch(screen, /stale skill cleanup, with receipts/);
   assert.match(screen, /interactive cleanup/);
   assert.match(screen, /2 cleanup candidates/);
-  assert.match(screen, /risk\s+tokens\s+30d burn\s+skill\s+cleanup reason\s+last verified use\s+installed/);
+  assert.match(screen, /risk\s+tokens\s+30d burn\s+skill\s+cleanup reason\s+last used\s+installed/);
   assert.doesNotMatch(screen, /\x1b\[/);
   assert.doesNotMatch(screen, /status/);
   assert.doesNotMatch(screen, /last strong use/);
@@ -875,9 +1174,9 @@ test("renders interactive cleanup candidates", async () => {
   assert.match(confirmScreen, /stale-skill/);
   assert.match(confirmScreen, /Removed description tokens: \d+ per future skill-catalog load/);
   assert.match(confirmScreen, /Potential new-chat savings: 11 x 2 new chats in last 30 days = 22 tokens/);
-  assert.match(confirmScreen, /Selected verified uses in last 30 days: 0/);
+  assert.match(confirmScreen, /Selected uses in last 30 days: 0/);
   assert.match(confirmScreen, /Observed selected-use prompt cost: 0 tokens/);
-  assert.match(confirmScreen, /Selected path mentions in window: 0 \(not counted as verified use\)/);
+  assert.match(confirmScreen, /Selected mentions in window: 0 \(not counted as use\)/);
   assert.match(confirmScreen, /Press Enter to quarantine/);
   assert.match(confirmScreen, /Press d for permanent delete/);
 
@@ -1165,7 +1464,7 @@ test("apply quarantines candidates and undo restores them", async () => {
   assert.match(stdout, /Manifest:/);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), false);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), false);
-  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("weak-only"))), true);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("mention-only"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("recent-skill"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath(".system-skill"))), true);
 
@@ -1187,7 +1486,7 @@ test("apply quarantines candidates and undo restores them", async () => {
   assert.match(undoStdout, /Restored 2 skills/);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("stale-skill"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("never-used"))), true);
-  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("weak-only"))), true);
+  assert.equal(fs.existsSync(path.dirname(fixture.skillPath("mention-only"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath("recent-skill"))), true);
   assert.equal(fs.existsSync(path.dirname(fixture.skillPath(".system-skill"))), true);
 });

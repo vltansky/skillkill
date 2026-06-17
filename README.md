@@ -37,16 +37,16 @@ for evidence that each skill was actually used.
 
 - Default skill roots: `~/.agents/skills`, `~/.claude/skills`,
   `~/.codex/skills`, and `~/.cursor/skills`
-- Verified use: native skill-invocation records from supported tools
-- Path mention: raw `SKILL.md` path mentions in supported local stores
-- Cleanup candidates: stale verified use or never-used skills past the age
+- Usage: native skill-invocation records and structured skill actions from supported tools
+- Mention: raw `SKILL.md` path/name mentions in supported local stores
+- Cleanup candidates: stale usage or never-used skills past the age
   threshold
-- Protected rows: dot-prefixed system skills, recent verified use, recent path
-  mentions, and omitted skills
+- Protected rows: dot-prefixed system skills, recent usage, recent mentions,
+  and omitted skills
 
-Path mentions do not prove a skill was invoked, but recent path mentions keep a
-skill out of cleanup candidates because they may indicate use in tools without
-native attribution.
+Mentions do not prove a skill was invoked, but recent mentions keep a skill out
+of cleanup candidates because they may indicate use in tools without native
+attribution.
 
 ## Safety Model
 
@@ -116,15 +116,15 @@ skillkill undo latest
 
 Rows include `risk`, `description_token_cost`, and `used_window_tokens`. Token
 cost is a rough estimate from the skill `description` frontmatter field.
-`used_window_tokens` is observed cost from verified uses in the current
+`used_window_tokens` is observed cost from usage events in the current
 `--savings-days` window. Human tables show `30d burn` by default: each skill's
 description tokens multiplied by distinct new local chat/session artifacts found
 in the last `--savings-days` window. They also show installed date and a
-terminal hyperlink on the last verified chat label when the terminal supports it.
+terminal hyperlink on the last used chat label when the terminal supports it.
 
 The interactive confirmation screen shows the selected skills, description
 tokens removed per future skill-catalog load, and observed token cost from
-recent verified uses of the selected skills. It also shows potential new-chat
+recent usage events of the selected skills. It also shows potential new-chat
 savings: removed description tokens multiplied by distinct new local chat/session
 artifacts found in the last `--savings-days` window.
 
@@ -152,10 +152,11 @@ Interactive omit appends the skill name to `~/.config/skillkill/omit` unless
 | --- | --- |
 | `--path PATH`, `--skills-dir PATH` | Skills directory to scan; repeatable |
 | `--source codex|claude|opencode|cursor|filesystem|all` | Evidence source to scan |
-| `--evidence-dir PATH` | Extra transcript or log directory for path mentions |
-| `--unused-days N` | Mark skills stale after last verified use |
+| `--evidence-dir PATH` | Extra transcript or log directory for mentions |
+| `--unused-days N` | Mark skills stale after last use |
 | `--unused-installed-days N` | Propose never-used skills after install age |
-| `--protect-weak-days N` | Defer cleanup after recent path mentions |
+| `--protect-mention-days N` | Defer cleanup after recent mentions |
+| `--protect-weak-days N` | Deprecated alias for `--protect-mention-days` |
 | `--savings-days N` | Estimate token savings from recent activity |
 | `--omit PATTERN`, `--whitelist PATTERN` | Keep matching skills out of cleanup candidates |
 | `skillkill omit PATTERN` | Persist an omit pattern |
@@ -169,17 +170,20 @@ Run `skillkill --help` for the complete command reference.
 
 ## Supported Tools
 
-| Tool | Default locations | Verified use | Path mentions |
+| Tool | Default locations | Usage | Mentions |
 | --- | --- | --- | --- |
-| Codex | `~/.codex/sessions`, `~/.codex/archived_sessions` | Injected `<skill><name>...<path>...` transcript blocks | Raw `SKILL.md` path references when included in scanned records; broader path discovery with `--full-scan` |
-| Claude / Claude Code | `~/.claude/history.jsonl`, `~/.claude/projects`, `~/.claude/tasks`, `~/.claude/sessions`, `~/Library/Application Support/Claude/claude-code-sessions`, `~/Library/Application Support/Claude/local-agent-mode-sessions` | `attributionSkill` records | Raw `.claude/skills/.../SKILL.md` or `.agents/skills/.../SKILL.md` path references |
+| Codex | `~/.codex/sessions`, `~/.codex/archived_sessions`, plugin cache skill roots | Injected `<skill><name>...<path>...` transcript blocks; shell commands that read `SKILL.md`; commands that execute files under a skill `scripts/` directory | Raw `SKILL.md` path references when included in scanned records; broader path discovery with `--full-scan` |
+| Claude / Claude Code | `~/.claude/history.jsonl`, `~/.claude/projects`, `~/.claude/tasks`, `~/.claude/sessions`, `~/Library/Application Support/Claude/claude-code-sessions`, `~/Library/Application Support/Claude/local-agent-mode-sessions`, `~/.claude.json` | `attributionSkill` records; native `Skill` tool calls; invoked-skill attachments; slash-command skill tags; autocomplete `skillUsage.lastUsedAt`; structured read tool calls or shell commands that read `SKILL.md`; commands that execute files under a skill `scripts/` directory | Raw `.claude/skills/.../SKILL.md` or `.agents/skills/.../SKILL.md` path references |
 | OpenCode | `~/.local/share/opencode/storage/message`, `storage/part`, `storage/session/message`, `storage/session/part` | Structured `read` tool parts whose input targets an installed `SKILL.md` | Raw `SKILL.md` path references in message or part JSON |
-| Cursor | `~/.cursor/chats/**/store.db` | Not promoted yet; Cursor storage is undocumented and needs a proper SQLite/blob parser first | Raw `SKILL.md` path references found in chat DB blobs |
-| Extra filesystem roots | Paths passed with `--evidence-dir` | None | Raw `SKILL.md` path references |
+| Cursor | `~/.cursor/projects/**/agent-transcripts/*.jsonl`, `~/.cursor/chats/**/store.db` | Structured read tool calls in agent transcripts whose input targets an installed `SKILL.md` | Raw `SKILL.md` path references found in agent transcripts or chat DB blobs |
+| Extra filesystem roots | Paths passed with `--evidence-dir` | Structured read tool records or shell commands that read `SKILL.md` | Raw `SKILL.md` path references |
 
-Verified use drives `last_verified_use`. Path mentions contribute to
-`last_any_signal` and protect recent matches from automatic cleanup, but remain
-lower confidence.
+Usage drives `last_used`; `last_verified_use` remains as a compatibility alias.
+Mentions contribute to `last_seen` and `last_any_signal`, and protect recent
+matches from automatic cleanup, but remain lower confidence.
+
+Codex plugin-cache skills are reported for visibility, but are protected from
+cleanup because they are managed by the plugin cache.
 
 ## Whitelist / Omit
 
@@ -217,14 +221,11 @@ similar to `skillkill`.
 npm test
 npm run check
 npm run build
+npm run link:local
 ```
 
-Local command link:
-
-```bash
-mkdir -p "$HOME/.local/bin"
-ln -sf "$PWD/bin/skillkill.js" "$HOME/.local/bin/skillkill"
-```
+`npm run link:local` links `skillkill`, `skill-kill`, `skill-cleanup`, and
+`skill-prune` into `~/.local/bin` for testing this checkout from any shell.
 
 ## Publishing
 
