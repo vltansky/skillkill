@@ -12,6 +12,8 @@ on:
           - "false"
           - "true"
   push:
+    branches:
+      - master
     tags:
       - "v*.*.*"
 

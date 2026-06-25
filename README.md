@@ -234,4 +234,4 @@ npm run link:local
 
 Publishing is done only by GitHub Actions. The publish workflow supports a
 manual dry run and publishes `skillkill`, `skill-cleanup`, and `skill-prune`
-from version tags.
+from pushes to `master` or from version tags.
