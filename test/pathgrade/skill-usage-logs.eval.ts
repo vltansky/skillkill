@@ -31,6 +31,13 @@ const useModes = [
 ] as const;
 type UseMode = (typeof useModes)[number];
 
+const scannerModesByProvider = {
+  codex: [...useModes.map((mode) => mode.id), "command-name"],
+  claude: [...useModes.map((mode) => mode.id), "command-name"],
+  opencode: useModes.map((mode) => mode.id),
+  cursor: useModes.map((mode) => mode.id),
+} as const satisfies Record<string, readonly string[]>;
+
 function logText(value: unknown) {
   return JSON.stringify(value);
 }
@@ -90,9 +97,11 @@ function writeProviderEvidence(provider: string, mode: string) {
 
   if (provider === "codex") {
     const message =
-      mode === "indirect" || mode === "direct"
-        ? `<skill>\n<name>${SKILL_NAME}</name>\n<path>${skillPath}</path>\n</skill>`
-        : `exec\nsed -n '1,220p' ${skillPath}\nsucceeded`;
+      mode === "command-name"
+        ? `<command-name>${SKILL_NAME}</command-name><skill-format>true</skill-format>`
+        : mode === "indirect" || mode === "direct"
+          ? `<skill>\n<name>${SKILL_NAME}</name>\n<path>${skillPath}</path>\n</skill>`
+          : `exec\nsed -n '1,220p' ${skillPath}\nsucceeded`;
     writeJsonl(path.join(root, ".codex", "sessions", `${mode}.jsonl`), [
       { timestamp: "2026-06-10T00:00:00Z", message },
     ]);
@@ -101,7 +110,13 @@ function writeProviderEvidence(provider: string, mode: string) {
 
   if (provider === "claude") {
     const record =
-      mode === "indirect" || mode === "direct"
+      mode === "command-name"
+        ? {
+            timestamp: "2026-06-10T00:00:00Z",
+            message:
+              `<command-name>${SKILL_NAME}</command-name><skill-format>true</skill-format>`,
+          }
+        : mode === "indirect" || mode === "direct"
         ? { timestamp: "2026-06-10T00:00:00Z", attributionSkill: SKILL_NAME }
         : {
             type: "assistant",
@@ -260,10 +275,10 @@ describe("Pathgrade skill usage logging", () => {
     }
   }
 
-  for (const provider of ["codex", "claude", "opencode", "cursor"]) {
-    for (const mode of useModes) {
-      it(`scanner verifies ${provider} ${mode.id} skill use evidence`, async () => {
-        await expectProviderMode(provider, mode.id);
+  for (const [provider, modes] of Object.entries(scannerModesByProvider)) {
+    for (const mode of modes) {
+      it(`scanner verifies ${provider} ${mode} skill use evidence`, async () => {
+        await expectProviderMode(provider, mode);
       });
     }
   }

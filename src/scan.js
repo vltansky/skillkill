@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
-import { existingRoots, jsonStrings, sourceLabel, walkFiles, withinRoot } from "./fs-utils.js";
+import { existingRoots, jsonStrings, shellQuote, sourceLabel, walkFiles, withinRoot } from "./fs-utils.js";
 import { ageDays, timestampFromRecord } from "./model.js";
 
 const SKILL_BLOCK_RE =
@@ -12,6 +12,10 @@ const DOT_SKILL_PATH_RE =
   /(?<path>(?:~|\/[^"'<>\s]+)?\/\.(?:agents|claude|codex|cursor)\/skills\/(?<name>[^\/"'<>\s]+)\/SKILL\.md)/g;
 const RELATIVE_DOT_SKILL_PATH_RE =
   /(?<path>(?:\.(?:agents|claude|codex|cursor)|\$(?:\{HOME\}|HOME)\/\.(?:agents|claude|codex|cursor))\/skills\/(?<name>[^\/"'<>\s]+)\/SKILL\.md)/g;
+const BARE_SKILL_PATH_RE =
+  /\/skills\/(?<name>[^\/"<>\s]+)\/SKILL\.md/g;
+const BARE_SKILL_SCRIPT_RE =
+  /\/skills\/(?<name>[^\/"<>\s]+)\/scripts\//g;
 const CANONICAL_DOT_SKILL_PATH_RE =
   /(?:^|\/)\.(?:agents|claude|codex|cursor)\/skills\/(?<name>[^/]+)\/SKILL\.md$/;
 const CODEX_PLUGIN_SKILL_PATH_RE =
@@ -31,6 +35,7 @@ const READ_COMMAND_RE = new RegExp(
   String.raw`\b${READ_COMMAND_PATTERN}\b[\s\S]*\/SKILL\.md\b`,
 );
 const COMMAND_NAME_RE = /<command-name>([^<]+)<\/command-name>/g;
+const MAX_PREFILTERED_JSON_LINE_LENGTH = 10_000;
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -71,6 +76,64 @@ function skillPathSearchPattern(skillsDirs) {
   ]
     .filter(Boolean)
     .join("|");
+}
+
+function installedSkillPathSearchPattern(skills) {
+  const paths = new Set();
+  const names = new Set();
+  for (const usage of skills.values()) {
+    paths.add(usage.path);
+    paths.add(usage.realPath);
+    names.add(usage.skill);
+    const home = process.env.HOME || "";
+    if (home && usage.path.startsWith(`${home}${path.sep}`)) {
+      paths.add(`~${usage.path.slice(home.length)}`);
+    }
+  }
+  const exactPaths = [...paths].filter(Boolean).map(escapeRegExp);
+  const exactNames = [...names].filter(Boolean).map(escapeRegExp).join("|");
+  const relativePaths = exactNames
+    ? [
+        String.raw`(?:\.(?:agents|claude|codex|cursor)|\$(?:\{HOME\}|HOME)/\.(?:agents|claude|codex|cursor))/skills/(?:${exactNames})/SKILL\.md`,
+      ]
+    : [];
+  return [...exactPaths, ...relativePaths].join("|");
+}
+
+function installedSkillFixedPatterns(skills) {
+  const patterns = new Set();
+  for (const usage of skills.values()) {
+    patterns.add(`/skills/${usage.skill}/SKILL.md`);
+    patterns.add(`/skills/${usage.skill}/scripts/`);
+    patterns.add(`<command-name>${usage.skill}</command-name>`);
+  }
+  return [...patterns].filter(Boolean);
+}
+
+function installedSkillRawMatcher(skills) {
+  const names = new Set();
+  for (const usage of skills.values()) {
+    names.add(usage.skill);
+  }
+  return (text) => {
+    if (!text.includes("SKILL.md") && !text.includes("/scripts/") && !text.includes("<command-name>")) {
+      return false;
+    }
+    for (const match of text.matchAll(/\/skills\/([^\/"'<>\s]+)\/(?:SKILL\.md|scripts\/)/g)) {
+      if (names.has(match[1])) return true;
+    }
+    const commandName = text.match(/<command-name>([^<]+)<\/command-name>/);
+    return commandName ? names.has(commandName[1]?.trim()) : false;
+  };
+}
+
+function skillScriptSearchPattern(skills) {
+  const variants = new Set();
+  for (const usage of skills.values()) {
+    variants.add(path.join(path.dirname(usage.path), "scripts") + path.sep);
+    if (usage.realPath) variants.add(path.join(path.dirname(usage.realPath), "scripts") + path.sep);
+  }
+  return [...variants].map(escapeRegExp).join("|");
 }
 
 function sourcePointer(file, lineNo) {
@@ -533,8 +596,34 @@ function addSkillPathReferences(skills, options, text, context) {
     }
   }
 
+  for (const match of text.matchAll(BARE_SKILL_PATH_RE)) {
+    const name = context.aliases?.get(match.groups.name) || match.groups.name;
+    if ([...seenPathRefs].some((key) => key.startsWith(`${name}:`))) continue;
+    const key = `${name}:${match[0]}`;
+    if (seenPathRefs.has(key)) continue;
+    seenPathRefs.add(key);
+    if (
+      addEvidence(
+        skills,
+        name,
+        {
+          ts: context.ts,
+          kind: context.kind,
+          source: context.source,
+          sourceFile: context.sourceFile,
+          sourceLine: context.sourceLine,
+          chatTitle: context.chatTitle,
+        },
+        usageEvent,
+      )
+    ) {
+      count += 1;
+    }
+  }
+
   for (const customPathRe of customPathRes) {
     for (const match of text.matchAll(customPathRe)) {
+      if ([...seenPathRefs].some((key) => key.startsWith(`${match.groups.name}:`))) continue;
       const key = `${match.groups.name}:${match.groups.path}`;
       if (seenPathRefs.has(key)) continue;
       seenPathRefs.add(key);
@@ -693,6 +782,29 @@ function addScriptCommandSkillEvidence(skills, text, context) {
   let count = 0;
   for (const line of text.split(/\r?\n/)) {
     if (!line.includes("/scripts/")) continue;
+    let matchedBareScript = false;
+    for (const match of line.matchAll(BARE_SKILL_SCRIPT_RE)) {
+      if (
+        addEvidence(
+          skills,
+          match.groups.name,
+          {
+            ts: context.ts,
+            kind: context.kind,
+            source: context.source,
+            sourceFile: context.sourceFile,
+            sourceLine: context.sourceLine,
+            chatTitle: context.chatTitle,
+          },
+          true,
+        )
+      ) {
+        if (context.stats) context.stats.evidence += 1;
+        count += 1;
+        matchedBareScript = true;
+      }
+    }
+    if (matchedBareScript) continue;
     for (const usage of skills.values()) {
       const skillDir = path.dirname(usage.path);
       const variants = [
@@ -752,44 +864,41 @@ function scanClaudeSkillUsageConfig(skills, options, stats, aliases) {
   }
 }
 
-function rgMatchingCoordinates(roots, pattern) {
-  if (roots.length === 0) return null;
-  const result = spawnSync(
-    "rg",
-    [
-      "-n",
-      "-o",
-      "--no-heading",
-      "--color",
-      "never",
-      "--no-messages",
-      "--glob",
-      "*.jsonl",
-      "-e",
-      pattern,
-      ...roots,
-    ],
-    { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
-  );
-
-  if (result.error) return null;
-  if (![0, 1].includes(result.status)) return null;
-
-  const seen = new Set();
-  const coordinates = [];
-  for (const raw of result.stdout.split(/\r?\n/)) {
-    if (!raw.trim()) continue;
-    const match = raw.match(/^(.*):(\d+):/);
-    if (!match) continue;
-    const file = match[1];
-    const lineNo = Number(match[2]);
-    if (!file || Number.isNaN(lineNo)) continue;
-    const key = `${file}:${lineNo}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    coordinates.push({ file, lineNo });
+function processMatchedJsonLine(item, stats, onRecord) {
+  stats.matchedLines += 1;
+  if (item.line.length > MAX_PREFILTERED_JSON_LINE_LENGTH) {
+    stats.parsedRecords += 1;
+    onRecord(null, item.file, item.lineNo, item.line);
+    return;
   }
-  return coordinates;
+  let record;
+  try {
+    record = JSON.parse(item.line);
+  } catch {
+    stats.parseErrors += 1;
+    return;
+  }
+  stats.parsedRecords += 1;
+  onRecord(record, item.file, item.lineNo, item.line);
+}
+
+function fixedPatternFile(patterns) {
+  const file = path.join(process.env.TMPDIR || "/tmp", `skillkill-rg-${crypto.randomUUID()}.txt`);
+  fs.writeFileSync(file, `${patterns.join("\n")}\n`);
+  return file;
+}
+
+function jsonlRootsSize(roots) {
+  let size = 0;
+  for (const root of roots) {
+    for (const file of walkFiles(root, (item) => item.endsWith(".jsonl"))) {
+      try {
+        size += fs.statSync(file).size;
+      } catch {
+      }
+    }
+  }
+  return size;
 }
 
 async function readSelectedJsonLines(file, lineNumbers) {
@@ -813,6 +922,101 @@ async function readSelectedJsonLines(file, lineNumbers) {
     input.destroy();
   }
   return rows;
+}
+
+async function scanRgJsonLines(roots, pattern, stats, onRecord, shouldProcessRaw = () => true) {
+  if (roots.length === 0) return true;
+  const pipelinePattern = pattern && typeof pattern === "object" && !Array.isArray(pattern);
+  const usePipeline = pipelinePattern && jsonlRootsSize(roots) > 50 * 1024 * 1024;
+  const patternFile = Array.isArray(pattern)
+    ? fixedPatternFile(pattern)
+    : usePipeline
+      ? fixedPatternFile(pattern.fixed)
+      : "";
+  const child = usePipeline
+    ? spawn(
+        "sh",
+        [
+          "-c",
+          [
+            "rg -n --no-heading --color never --no-messages --glob '*.jsonl'",
+            "-e",
+            shellQuote(pattern.prefilter),
+            ...roots.map(shellQuote),
+            "|",
+            "rg -F -f",
+            shellQuote(patternFile),
+            "|",
+            "perl -ne",
+            shellQuote('if (/^(.*?:\\d+:).*?(\\/skills\\/[^\\/"<>\\s]+\\/(?:SKILL\\.md|scripts\\/)|<command-name>[^<]+<\\/command-name>)/) { print "$1$2\\n" }'),
+          ].join(" "),
+        ],
+        { stdio: ["ignore", "pipe", "ignore"] },
+      )
+    : spawn(
+        "rg",
+        [
+          "-n",
+          "--no-heading",
+          "--color",
+          "never",
+          "--no-messages",
+          "--glob",
+          "*.jsonl",
+          ...(Array.isArray(pattern)
+            ? ["-F", "-f", patternFile]
+            : ["-e", pipelinePattern ? pattern.prefilter : pattern]),
+          ...roots,
+        ],
+        { stdio: ["ignore", "pipe", "ignore"] },
+      );
+
+  const seen = new Set();
+  const matchedFiles = new Set();
+  const compactOnly = usePipeline;
+  const rl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
+
+  try {
+    for await (const raw of rl) {
+      if (!raw.trim()) continue;
+      const match = raw.match(/^([^:]+):(\d+):(.*)$/);
+      if (!match) continue;
+      const file = match[1];
+      const lineNo = Number(match[2]);
+      const line = match[3];
+      if (!file || Number.isNaN(lineNo)) continue;
+      if (compactOnly && !shouldProcessRaw(line)) continue;
+      const key = `${file}:${lineNo}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      matchedFiles.add(file);
+      if (compactOnly) {
+        stats.matchedLines += 1;
+        stats.parsedRecords += 1;
+        onRecord(null, file, lineNo, line);
+      } else {
+        processMatchedJsonLine({ file, lineNo, line }, stats, onRecord);
+      }
+    }
+  } finally {
+    rl.close();
+  }
+
+  const status = await new Promise((resolve) => {
+    child.on("error", () => resolve(null));
+    child.on("close", (code) => resolve(code));
+  });
+  if (patternFile) {
+    try {
+      fs.unlinkSync(patternFile);
+    } catch {
+    }
+  }
+  if (![0, 1].includes(status)) return false;
+
+  stats.matchedFiles += matchedFiles.size;
+  addStrategy(stats, "ripgrep-line-prefilter");
+  return true;
 }
 
 function readJsonLines(file) {
@@ -866,51 +1070,39 @@ async function scanJsonLines(files, stats, shouldReadLine, onRecord) {
   stats.matchedFiles += matchedFiles.size;
 }
 
-async function scanMatchingJsonLines(roots, pattern, stats, onRecord, fullScan = false) {
+async function scanMatchingJsonLines(
+  roots,
+  pattern,
+  stats,
+  onRecord,
+  fullScan = false,
+  shouldProcessRaw = () => true,
+) {
   if (roots.length === 0) return;
   const started = Date.now();
   const allFiles = () =>
     roots.flatMap((root) => walkFiles(root, (file) => file.endsWith(".jsonl")));
-  const coordinates = fullScan ? null : rgMatchingCoordinates(roots, pattern);
+  if (!fullScan && (await scanRgJsonLines(roots, pattern, stats, onRecord, shouldProcessRaw))) {
+    stats.elapsedMs += Date.now() - started;
+    return;
+  }
 
-  let inputs = [];
-  if (coordinates !== null) {
-    const byFile = new Map();
-    for (const item of coordinates) {
-      if (!byFile.has(item.file)) byFile.set(item.file, []);
-      byFile.get(item.file).push(item.lineNo);
-    }
-    for (const [file, lineNumbers] of byFile) {
-      inputs.push(...(await readSelectedJsonLines(file, lineNumbers)));
-    }
-    addStrategy(stats, "ripgrep-coordinate-prefilter");
-    stats.matchedFiles += byFile.size;
-  } else {
-    const prefilter = new RegExp(pattern);
+  {
+    const pipelinePattern = pattern && typeof pattern === "object" && !Array.isArray(pattern);
+    const prefilter = Array.isArray(pattern) || pipelinePattern ? null : new RegExp(pattern);
+    const fixedPatterns = Array.isArray(pattern) ? pattern : pattern.fixed;
     await scanJsonLines(
       allFiles(),
       stats,
-      (line) => fullScan || prefilter.test(line),
+      (line) =>
+        (fullScan || (prefilter ? prefilter.test(line) : fixedPatterns.some((item) => line.includes(item)))) &&
+        shouldProcessRaw(line),
       onRecord,
     );
     addStrategy(stats, fullScan ? "full-jsonl-scan" : "full-jsonl-fallback");
     stats.elapsedMs += Date.now() - started;
     return;
   }
-
-  stats.matchedLines += inputs.length;
-  for (const item of inputs) {
-    let record;
-    try {
-      record = JSON.parse(item.line);
-    } catch {
-      stats.parseErrors += 1;
-      continue;
-    }
-    stats.parsedRecords += 1;
-    onRecord(record, item.file, item.lineNo);
-  }
-  stats.elapsedMs += Date.now() - started;
 }
 
 function rgMatchingFiles(roots, pattern, glob) {
@@ -1165,19 +1357,19 @@ async function scanCodex(skills, options, stats) {
     "codex",
     countRecentFiles(roots, (file) => file.endsWith(".jsonl"), jsonlStartTimestamp, options),
   );
-  const pattern = [
-    skillPathSearchPattern(rootsForSkills),
-    String.raw`/scripts/`,
-    String.raw`\\n\s*(?:[+>\-]\s*)?(?:\S+/)?${READ_COMMAND_PATTERN}\s+(?:[-'"./~$\\]|[A-Za-z]:).*SKILL\.md`,
-  ].join("|");
+  const pattern = {
+    prefilter: String.raw`SKILL\.md|/scripts/|<command-name>`,
+    fixed: installedSkillFixedPatterns(skills),
+  };
+  const shouldProcessRaw = installedSkillRawMatcher(skills);
 
   await scanMatchingJsonLines(
     roots,
     pattern,
     stats.codex,
-    (record, file, lineNo) => {
-      const ts = timestampFromRecord(record);
-      const text = jsonStrings(record).join("\n");
+    (record, file, lineNo, rawLine) => {
+      const ts = record ? timestampFromRecord(record) : fileTimestamp(file);
+      const text = record ? jsonStrings(record).join("\n") : rawLine;
       let usageEventCount = 0;
 
       for (const blockMatch of text.matchAll(SKILL_BLOCK_RE)) {
@@ -1224,8 +1416,17 @@ async function scanCodex(skills, options, stats) {
         chatTitle: chatTitle(record, file),
         stats: stats.codex,
       });
+      usageEventCount += addCommandNameSkillEvidence(skills, text, {
+        ts,
+        kind: "codex_command_name_skill",
+        source: sourcePointer(file, lineNo),
+        sourceFile: file,
+        sourceLine: lineNo,
+        chatTitle: chatTitle(record, file),
+        stats: stats.codex,
+      });
 
-      if (usageEventCount === 0) {
+      if (usageEventCount === 0 && record) {
         addSkillPathReferences(skills, options, text, {
           ts,
           kind: "codex_path_reference",
@@ -1238,6 +1439,7 @@ async function scanCodex(skills, options, stats) {
       }
     },
     options.fullScan,
+    shouldProcessRaw,
   );
 }
 
@@ -1289,11 +1491,17 @@ async function scanClaude(skills, options, stats) {
       options,
     ),
   );
-  const pattern =
-    `"attributionSkill"|"invoked_skills"|"name"\\s*:\\s*"Skill"|<command-name>|/scripts/|${skillPathSearchPattern(rootsForSkills)}`;
+  const pattern = [
+    `"attributionSkill"`,
+    `"invoked_skills"`,
+    `"name"\\s*:\\s*"Skill"`,
+    `<command-name>`,
+    skillScriptSearchPattern(skills),
+    installedSkillPathSearchPattern(skills),
+  ].filter(Boolean).join("|");
 
-  const onRecord = (record, file, lineNo) => {
-    const ts = timestampFromRecord(record) || fileTimestamp(file);
+  const onRecord = (record, file, lineNo, rawLine) => {
+    const ts = record ? timestampFromRecord(record) || fileTimestamp(file) : fileTimestamp(file);
     let usageEventCount = 0;
 
     for (const attributionSkill of attributionSkills(record)) {
@@ -1318,8 +1526,8 @@ async function scanClaude(skills, options, stats) {
       }
     }
 
-    const text = jsonStrings(record).join("\n");
-    usageEventCount += addStructuredSkillToolEvidence(skills, record, {
+    const text = record ? jsonStrings(record).join("\n") : rawLine;
+    usageEventCount += record ? addStructuredSkillToolEvidence(skills, record, {
       ts,
       kind: "claude_skill_tool",
       source: sourcePointer(file, lineNo),
@@ -1328,8 +1536,8 @@ async function scanClaude(skills, options, stats) {
       chatTitle: chatTitle(record, file),
       aliases,
       stats: stats.claude,
-    });
-    usageEventCount += addInvokedSkillsEvidence(skills, options, record, {
+    }) : 0;
+    usageEventCount += record ? addInvokedSkillsEvidence(skills, options, record, {
       ts,
       kind: "claude_invoked_skills_attachment",
       source: sourcePointer(file, lineNo),
@@ -1338,7 +1546,7 @@ async function scanClaude(skills, options, stats) {
       chatTitle: chatTitle(record, file),
       aliases,
       stats: stats.claude,
-    });
+    }) : 0;
     usageEventCount += addCommandNameSkillEvidence(skills, text, {
       ts,
       kind: "claude_command_name_skill",
@@ -1349,7 +1557,7 @@ async function scanClaude(skills, options, stats) {
       aliases,
       stats: stats.claude,
     });
-    usageEventCount += addStructuredToolReadEvidence(skills, options, record, {
+    usageEventCount += record ? addStructuredToolReadEvidence(skills, options, record, {
       ts,
       kind: "claude_tool_read_skill",
       source: sourcePointer(file, lineNo),
@@ -1358,7 +1566,7 @@ async function scanClaude(skills, options, stats) {
       chatTitle: chatTitle(record, file),
       aliases,
       stats: stats.claude,
-    });
+    }) : 0;
     usageEventCount += addReadCommandSkillEvidence(skills, options, text, {
       ts,
       kind: "claude_skill_read_command",
@@ -1379,7 +1587,7 @@ async function scanClaude(skills, options, stats) {
       stats: stats.claude,
     });
 
-    if (usageEventCount === 0) {
+    if (usageEventCount === 0 && record) {
       addSkillPathReferences(skills, options, text, {
         ts,
         kind: "claude_path_reference",
@@ -1435,7 +1643,7 @@ async function scanOpencode(skills, options, stats) {
       options,
     ),
   );
-  const pattern = skillPathSearchPattern(rootsForSkills);
+  const pattern = installedSkillPathSearchPattern(skills);
 
   await scanMatchingJsonFiles(
     roots,
@@ -1474,12 +1682,12 @@ async function scanCursor(skills, options, stats) {
 
   await scanMatchingJsonLines(
     existingRoots([path.join(home, "projects")]),
-    skillPathSearchPattern(rootsForSkills),
+    installedSkillPathSearchPattern(skills),
     stats.cursor,
-    (record, file, lineNo) => {
-      const ts = timestampFromRecord(record) || fileTimestamp(file);
+    (record, file, lineNo, rawLine) => {
+      const ts = record ? timestampFromRecord(record) || fileTimestamp(file) : fileTimestamp(file);
       let usageEventCount = 0;
-      usageEventCount += addStructuredToolReadEvidence(skills, options, record, {
+      usageEventCount += record ? addStructuredToolReadEvidence(skills, options, record, {
         ts,
         kind: "cursor_agent_transcript_tool_read_skill",
         source: sourcePointer(file, lineNo),
@@ -1487,10 +1695,10 @@ async function scanCursor(skills, options, stats) {
         sourceLine: lineNo,
         chatTitle: chatTitle(record, file),
         stats: stats.cursor,
-      });
+      }) : 0;
 
-      if (usageEventCount === 0) {
-        addSkillPathReferences(skills, options, jsonStrings(record).join("\n"), {
+      if (usageEventCount === 0 && record) {
+        addSkillPathReferences(skills, options, record ? jsonStrings(record).join("\n") : rawLine, {
           ts,
           kind: "cursor_agent_transcript_path_reference",
           source: sourcePointer(file, lineNo),
@@ -1510,7 +1718,7 @@ async function scanCursor(skills, options, stats) {
   scanPathMatchesInRoots(
     skills,
     roots,
-    skillPathSearchPattern(rootsForSkills),
+    installedSkillPathSearchPattern(skills),
     stats.cursor,
     options,
     "cursor_path_reference",

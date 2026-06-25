@@ -379,7 +379,7 @@ export function renderInteractiveLoadingScreen(state = {}, dimensions = {}) {
     renderLogo({ color: color.title }),
     color.dim("interactive cleanup"),
     "",
-    color.info(`Loading evidence${dots}`),
+    color.info(`Loading skills${dots}`),
     color.dim("Scanning installed skills and local agent history."),
     color.dim("The review table will appear as soon as candidates are ranked."),
     "",

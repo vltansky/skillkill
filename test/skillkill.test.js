@@ -276,6 +276,7 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
     "codex-command-read",
     "codex-rg-read",
     "codex-script",
+    "codex-command-name",
     "opencode-only",
     "opencode-read",
     "cursor-only",
@@ -392,6 +393,11 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
       JSON.stringify({
         timestamp: "2026-06-04T01:00:00Z",
         message: `exec\nnode ${path.dirname(fixture.skillPath("codex-script"))}/scripts/run.js\nsucceeded`,
+      }),
+      JSON.stringify({
+        timestamp: "2026-06-04T02:00:00Z",
+        message:
+          "<command-name>codex-command-name</command-name><skill-format>true</skill-format>",
       }),
       "",
     ].join("\n"),
@@ -557,6 +563,8 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
   assert.equal(byName.get("codex-rg-read").last_verified_use, "2026-06-04 00:00:00");
   assert.equal(byName.get("codex-script").codex_usage_count, 1);
   assert.equal(byName.get("codex-script").last_verified_use, "2026-06-04 01:00:00");
+  assert.equal(byName.get("codex-command-name").codex_usage_count, 1);
+  assert.equal(byName.get("codex-command-name").last_verified_use, "2026-06-04 02:00:00");
   assert.equal(byName.get("opencode-only").opencode_mention_count, 1);
   assert.equal(byName.get("opencode-only").cleanup_candidate, false);
   assert.match(byName.get("opencode-only").cleanup_reason, /recent mention/);
@@ -585,7 +593,7 @@ test("tracks Claude app, OpenCode, Cursor, and custom evidence signals", async (
     byName.get("braced-home-command-read").last_verified_use,
     "2026-06-07 00:00:00",
   );
-  assert.equal(stats.codex.evidence, 5);
+  assert.equal(stats.codex.evidence, 6);
   assert.equal(stats.claude.evidence, 10);
   assert.equal(stats.opencode.evidence, 3);
   assert.equal(stats.cursor.evidence >= 4, true);
@@ -1288,7 +1296,7 @@ test("renders interactive loading screen before evidence is ready", () => {
   const screen = renderInteractiveLoadingScreen({ frame: 2 }, { colors: false });
 
   assert.match(screen, /interactive cleanup/);
-  assert.match(screen, /Loading evidence\.\./);
+  assert.match(screen, /Loading skills\.\./);
   assert.match(screen, /Scanning installed skills and local agent history/);
   assert.match(screen, /preview-only/);
 });
@@ -1356,7 +1364,7 @@ test("interactive e2e selects with enter and quarantines confirmed rows", async 
     { now: NOW, stdin, stdout, stderr: { write: () => {} } },
   );
 
-  assert.match(stdout.output, /Loading evidence/);
+  assert.match(stdout.output, /Loading skills/);
   await waitForOutput(stdout, /Keys: \/ search/);
   press(stdin, "space", " ");
   press(stdin, "enter", "\r");
